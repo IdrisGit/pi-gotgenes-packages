@@ -96,12 +96,40 @@ export async function requestPermissionDecision(
   payload: PromptPayload,
   options?: RequestPermissionOptions,
 ): Promise<PermissionPromptDecision> {
+  const surface = chooseDecisionSurface(view, title, payload, options);
+  return attributeToHuman(await surface.ask(), surface.via);
+}
+
+/** One human-facing surface: how to ask on it, and the name it answers under. */
+interface DecisionSurface {
+  via: UserDecisionSurface;
+  ask: () => Promise<UnattributedDecision>;
+}
+
+function chooseDecisionSurface(
+  view: PermissionPromptView,
+  title: string,
+  payload: PromptPayload,
+  options?: RequestPermissionOptions,
+): DecisionSurface {
   if (view.mode === "tui") {
-    return attributeToHuman(
-      await presentInlinePermissionPrompt(view, title, payload, options),
-      "dialog",
-    );
+    return {
+      via: "dialog",
+      ask: () => presentInlinePermissionPrompt(view, title, payload, options),
+    };
   }
+  return {
+    via: "select",
+    ask: () => askThroughFallback(view, title, payload, options),
+  };
+}
+
+function askThroughFallback(
+  view: PermissionPromptView,
+  title: string,
+  payload: PromptPayload,
+  options?: RequestPermissionOptions,
+): Promise<UnattributedDecision> {
   // The fallback renders once and cannot re-render, so it neither paints nor
   // offers an expansion; it substitutes a nominal width for the terminal size
   // it is never told, and the host's own select wraps from there.
@@ -109,14 +137,11 @@ export async function requestPermissionDecision(
     ...view.budget,
     width: FALLBACK_RENDER_WIDTH,
   });
-  return attributeToHuman(
-    await requestPermissionDecisionFromUi(
-      view.ui,
-      title,
-      rendered.lines.join("\n"),
-      options,
-    ),
-    "select",
+  return requestPermissionDecisionFromUi(
+    view.ui,
+    title,
+    rendered.lines.join("\n"),
+    options,
   );
 }
 
