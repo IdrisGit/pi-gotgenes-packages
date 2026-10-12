@@ -159,6 +159,7 @@ export default function piPermissionSystemExtension(pi: ExtensionAPI): void {
       budget: resolveRenderBudget(configStore.current()),
       dialogKeys: resolveDialogKeys(configStore.current()).keys,
       promptNotifications: configStore.current().promptNotifications ?? [],
+      promptTimeoutMs: configStore.current().promptTimeoutMs,
     }),
     requestPermissionDecision,
     forwardingDir: paths.forwardingDir,

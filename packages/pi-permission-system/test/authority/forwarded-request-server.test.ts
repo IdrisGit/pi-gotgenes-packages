@@ -1397,6 +1397,35 @@ describe("processInbox — terminal decision broadcast", () => {
     ]);
   });
 
+  test("relays a prompt nobody answered as unanswered, and broadcasts prompt_unanswered", async () => {
+    dir.writeRequest({ id: "req-unanswered", surface: "bash", value: "pwd" });
+    const server = makeServer({
+      escalator: escalatorAnswering({
+        approved: false,
+        state: "denied",
+        confirmationUnavailable: true,
+        decidedBy: { kind: "unanswered", timeoutMs: 60_000 },
+      }),
+    });
+
+    await server.processInbox(servingContext());
+
+    // The child renders "nobody answered" from this decider, so it must cross
+    // the wire intact rather than collapse into a user denial.
+    expect(readResponse(dir, "req-unanswered")).toMatchObject({
+      approved: false,
+      state: "denied",
+      decidedBy: { kind: "unanswered", timeoutMs: 60_000 },
+    });
+    expect(broadcastDecisions()).toMatchObject([
+      {
+        requestId: "req-unanswered",
+        result: "deny",
+        resolution: "prompt_unanswered",
+      },
+    ]);
+  });
+
   test("broadcasts the human's grant scope, not the scope written to the wire", async () => {
     dir.writeRequest({
       id: "req-serving-grant",

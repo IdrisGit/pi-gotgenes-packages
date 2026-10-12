@@ -2452,6 +2452,34 @@ describe("configured prompt preferences reach the inline dialog", () => {
     rmSync(cwd, { recursive: true, force: true });
   });
 
+  it("denies a prompt nobody answers within promptTimeoutMs, and tells the agent so", async () => {
+    writeGlobalConfig({
+      permission: { "*": "allow", demo: "ask" },
+      promptTimeoutMs: 20,
+    });
+
+    const cwd = mkdtempSync(join(tmpdir(), "pi-perm-unanswered-cwd-"));
+    const pi = makeFakePi({ toolNames: ["demo"] });
+    piPermissionSystemExtension(pi as unknown as ExtensionAPI);
+
+    const { ctx } = makeTuiCtx(cwd);
+    await fireSessionStart(pi, ctx);
+
+    const decision = await pi.fire(
+      "tool_call",
+      { toolName: "demo", toolCallId: "unanswered-ask", input: {} },
+      ctx,
+    );
+
+    expect(decision).toEqual({
+      block: true,
+      reason:
+        "[pi-permission-system] Nobody answered the approval prompt for this 'demo' call (rule '*') within 0.02s.",
+    });
+
+    rmSync(cwd, { recursive: true, force: true });
+  });
+
   describe("notification text", () => {
     async function openPrompt(sessionName?: string) {
       writeGlobalConfig({
