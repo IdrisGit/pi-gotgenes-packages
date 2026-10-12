@@ -334,6 +334,25 @@ describe("loadUnifiedConfig", () => {
     expect(result.issues.length).toBeGreaterThan(0);
   });
 
+  it("parses promptTimeoutMs when a valid positive integer is present", () => {
+    const configPath = join(tempDir, "config.json");
+    writeFileSync(configPath, JSON.stringify({ promptTimeoutMs: 60_000 }));
+    const result = loadUnifiedConfig(configPath);
+    expect(result.issues).toEqual([]);
+    expect(result.config.promptTimeoutMs).toBe(60_000);
+  });
+
+  it.each([
+    ["zero", 0],
+    ["a fraction", 1.5],
+    ["a string", "60000"],
+  ])("rejects %s as promptTimeoutMs", (_label, value) => {
+    const configPath = join(tempDir, "config.json");
+    writeFileSync(configPath, JSON.stringify({ promptTimeoutMs: value }));
+    const result = loadUnifiedConfig(configPath);
+    expect(result.issues.length).toBeGreaterThan(0);
+  });
+
   it("parses toolInputPreviewMaxLength when a valid positive integer is present", () => {
     const configPath = join(tempDir, "config.json");
     writeFileSync(
@@ -531,6 +550,21 @@ describe("mergeUnifiedConfigs", () => {
 
     expect(merged.promptMaxRows).toBe(10);
     expect(merged.promptFieldMaxWidth).toBe(400);
+  });
+
+  it("replaces the prompt timeout (project wins)", () => {
+    expect(
+      mergeUnifiedConfigs(
+        { promptTimeoutMs: 60_000 },
+        { promptTimeoutMs: 5_000 },
+      ).promptTimeoutMs,
+    ).toBe(5_000);
+  });
+
+  it("carries the prompt timeout from the base when unoverridden", () => {
+    expect(
+      mergeUnifiedConfigs({ promptTimeoutMs: 60_000 }, {}).promptTimeoutMs,
+    ).toBe(60_000);
   });
 
   it("replaces the review-log field width (project wins)", () => {

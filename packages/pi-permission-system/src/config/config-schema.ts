@@ -388,6 +388,12 @@ export const unifiedConfigSchema = z
         "How long a subagent waits for the parent session to answer a forwarded permission request, in milliseconds.\n\nOmit to use the default (`600000`, ten minutes). A child whose in-process parent is not draining its inbox at all gives up in a couple of seconds regardless of this value, so lower it only to bound how long you are willing to leave an *unanswered* prompt pending.",
       default: 600000,
     }),
+    promptTimeoutMs: z.number().int().min(1).optional().meta({
+      description:
+        "How long a permission prompt, once shown, waits for an answer before it is dismissed and the request denied, in milliseconds. Omit for no timer (the default).",
+      markdownDescription:
+        "How long a permission prompt, once shown, waits for an answer before it is dismissed and the request denied, in milliseconds.\n\nOmit for no timer (the default): a prompt waits until someone answers it. The clock starts when the prompt is shown, not when the request is raised, so a request queued behind another prompt gets its own full window.\n\nThe timeout only ever **denies**, and the agent is told nobody answered. It applies to prompts this session shows, including requests forwarded from its subagents; keep it below `forwardingTimeoutMs` so a forwarded request is answered before the subagent stops waiting.",
+    }),
     promptMaxRows: z.number().int().min(1).optional().meta({
       description:
         "Maximum rows a permission prompt renders before eliding its evidence. Omit to use the default (24).",

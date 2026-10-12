@@ -86,6 +86,13 @@
       "minimum": 1,
       "maximum": 9007199254740991
     },
+    "promptTimeoutMs": {
+      "description": "How long a permission prompt, once shown, waits for an answer before it is dismissed and the request denied, in milliseconds. Omit for no timer (the default).",
+      "markdownDescription": "How long a permission prompt, once shown, waits for an answer before it is dismissed and the request denied, in milliseconds.\n\nOmit for no timer (the default): a prompt waits until someone answers it. The clock starts when the prompt is shown, not when the request is raised, so a request queued behind another prompt gets its own full window.\n\nThe timeout only ever **denies**, and the agent is told nobody answered. It applies to prompts this session shows, including requests forwarded from its subagents; keep it below `forwardingTimeoutMs` so a forwarded request is answered before the subagent stops waiting.",
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991
+    },
     "promptMaxRows": {
       "description": "Maximum rows a permission prompt renders before eliding its evidence. Omit to use the default (24).",
       "markdownDescription": "Maximum rows a permission prompt renders before eliding its evidence.\n\nOmit to use the default (24). The request's own facts — the requesting agent, the tool, the matched rule, the decision-relevant value — are never elided by this budget; what gives way is the supporting evidence, and `Ctrl+O` expands the prompt to the complete request.",
