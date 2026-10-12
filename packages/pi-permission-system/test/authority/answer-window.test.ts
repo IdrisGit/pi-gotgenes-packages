@@ -31,6 +31,32 @@ describe("AnswerWindow", () => {
       expect(window.signal?.aborted).toBe(false);
     });
 
+    it("never aborts once a human engages before it elapses", () => {
+      const window = AnswerWindow.open(60_000);
+
+      vi.advanceTimersByTime(30_000);
+      window.engage();
+      vi.advanceTimersByTime(60_000);
+
+      expect(window.signal?.aborted).toBe(false);
+    });
+
+    it("reports its length only while the clock is running", () => {
+      const expired = AnswerWindow.open(60_000);
+      const engaged = AnswerWindow.open(60_000);
+      const closed = AnswerWindow.open(60_000);
+
+      engaged.engage();
+      closed.close();
+      vi.advanceTimersByTime(60_000);
+      const running = AnswerWindow.open(60_000);
+
+      expect(running.pendingTimeoutMs).toBe(60_000);
+      expect(expired.pendingTimeoutMs).toBeUndefined();
+      expect(engaged.pendingTimeoutMs).toBeUndefined();
+      expect(closed.pendingTimeoutMs).toBeUndefined();
+    });
+
     it("tolerates a second close", () => {
       const window = AnswerWindow.open(60_000);
       window.close();
@@ -56,6 +82,10 @@ describe("AnswerWindow", () => {
   describe("no configured window", () => {
     it("has no signal, so nothing can dismiss the prompt", () => {
       expect(AnswerWindow.open(undefined).signal).toBeUndefined();
+    });
+
+    it("reports no running clock", () => {
+      expect(AnswerWindow.open(undefined).pendingTimeoutMs).toBeUndefined();
     });
 
     it("refuses to name an expiry that cannot have happened", () => {

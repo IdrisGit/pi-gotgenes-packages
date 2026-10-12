@@ -650,6 +650,61 @@ describe("presentInlinePermissionPrompt", () => {
       expect(captured.done).toHaveBeenCalledOnce();
     });
 
+    it("stops the clock once the human presses a key, then waits for the answer", async () => {
+      const { view, captured } = makeFakeView(true, {
+        promptTimeoutMs: 60_000,
+      });
+      const promise = requestPermissionDecision(view, "Title", ASK);
+      const state = settlement(promise);
+
+      await vi.advanceTimersByTimeAsync(30_000);
+      captured.component?.handleInput(ARROW_DOWN);
+      await vi.advanceTimersByTimeAsync(60_000);
+
+      expect(state.settled).toBe(false);
+
+      captured.component?.handleInput("y");
+      captured.component?.handleInput("y");
+      expect(await promise).toEqual({
+        approved: true,
+        state: "approved",
+        decidedBy: { kind: "user", via: "dialog" },
+      });
+    });
+
+    it("names the window in the hint while the clock runs", () => {
+      const { view, captured } = makeFakeView(true, {
+        promptTimeoutMs: 60_000,
+      });
+      void requestPermissionDecision(view, "Title", ASK);
+
+      expect(captured.component?.render(200).at(-1)).toBe(
+        "↑/↓ move · enter confirm · esc deny · press a letter, then again to confirm · unanswered, denies in 60s",
+      );
+    });
+
+    it("drops the window from the hint once the human engages", () => {
+      const { view, captured } = makeFakeView(true, {
+        promptTimeoutMs: 60_000,
+      });
+      void requestPermissionDecision(view, "Title", ASK);
+
+      captured.component?.handleInput(ARROW_DOWN);
+
+      expect(captured.component?.render(200).at(-1)).toBe(
+        "↑/↓ move · enter confirm · esc deny · press a letter, then again to confirm",
+      );
+    });
+
+    it("names no window in the hint when none is configured", () => {
+      const { view, captured } = makeFakeView(true);
+      void requestPermissionDecision(view, "Title", ASK);
+
+      expect(captured.component?.render(200).at(-1)).toBe(
+        "↑/↓ move · enter confirm · esc deny · press a letter, then again to confirm",
+      );
+    });
+
     it("leaves a prompt open indefinitely when no window is configured", async () => {
       const { view, captured } = makeFakeView(true);
       const state = settlement(requestPermissionDecision(view, "Title", ASK));

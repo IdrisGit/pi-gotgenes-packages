@@ -5,7 +5,9 @@ import type { PermissionPromptDecision } from "./permission-dialog";
  *
  * Opened when a prompt is presented — never when its ask is admitted, so an
  * ask queued behind another dialog gets its own full window — and closed when
- * a human answers. If neither happens first, the window aborts its signal,
+ * a human answers. A human who starts answering engages it, which stops the
+ * clock without settling anything: the window bounds an unattended prompt and
+ * never cuts off someone mid-answer. If neither happens first, the window aborts its signal,
  * which dismisses the prompt, and the window itself is what decided: it stamps
  * the `unanswered` decider rather than leaving the caller to infer one.
  *
@@ -21,6 +23,7 @@ export class AnswerWindow {
   ) {
     if (timeoutMs !== undefined && controller !== undefined) {
       this.timer = setTimeout(() => {
+        this.timer = undefined;
         controller.abort();
       }, timeoutMs);
       this.timer.unref();
@@ -39,10 +42,19 @@ export class AnswerWindow {
     return this.controller?.signal;
   }
 
+  /** The window's length while its clock is running; `undefined` once stopped, expired, or never opened. */
+  get pendingTimeoutMs(): number | undefined {
+    return this.timer === undefined ? undefined : this.timeoutMs;
+  }
+
   /** A human answered: stop the clock. Idempotent. */
   close(): void {
-    clearTimeout(this.timer);
-    this.timer = undefined;
+    this.stopClock();
+  }
+
+  /** A human started answering: stop the clock and let them finish. Idempotent. */
+  engage(): void {
+    this.stopClock();
   }
 
   /**
@@ -65,5 +77,10 @@ export class AnswerWindow {
       confirmationUnavailable: true,
       decidedBy: { kind: "unanswered", timeoutMs: this.timeoutMs },
     };
+  }
+
+  private stopClock(): void {
+    clearTimeout(this.timer);
+    this.timer = undefined;
   }
 }
