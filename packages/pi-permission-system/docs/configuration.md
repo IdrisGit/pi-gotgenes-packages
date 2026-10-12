@@ -36,7 +36,7 @@ See [migration/0644-project-trust-gating.md](migration/0644-project-trust-gating
 4. Project agent frontmatter
 
 The `permission` object uses deep-shallow merge: string-vs-string replaces; both-object shallow-merges pattern maps; string-vs-object the override wins entirely.
-Scalar fields (`debugLog`, `permissionReviewLog`, `yoloMode`, `doublePressToConfirm`, `forwardingTimeoutMs`, `promptMaxRows`, `promptFieldMaxWidth`) use simple replacement.
+Scalar fields (`debugLog`, `permissionReviewLog`, `yoloMode`, `doublePressToConfirm`, `forwardingTimeoutMs`, `promptTimeoutMs`, `promptMaxRows`, `promptFieldMaxWidth`) use simple replacement.
 `permissionDialogKeys` replaces the whole map rather than merging entry by entry, so the map that was validated is the map that applies.
 `promptNotifications` likewise replaces the whole list, so a project `[]` turns off a global list.
 
@@ -60,6 +60,7 @@ This clamp is deny-preserving and, like `yoloMode`, applied at composition; when
   "yoloMode": false,
   "doublePressToConfirm": true,
   "forwardingTimeoutMs": 600000,
+  // "promptTimeoutMs": 60000, // opt-in: deny a prompt nobody answers (unset = no timer)
   "piInfrastructureReadPaths": [],
 
   // Non-bash tools that carry shell semantics
@@ -108,6 +109,7 @@ This clamp is deny-preserving and, like `yoloMode`, applied at composition; when
 | `permissionDialogKeys`      | —        | Remaps the inline TUI dialog's decision hotkeys (see below). One printable character per decision; omitted decisions keep `y` / `s` / `b` / `n` / `r`.                                                                                       |
 | `promptNotifications`       | `[]`     | Terminal notifications to emit when the inline TUI dialog opens: `"bell"`, `"osc9"`, `"osc777"` (see below). Empty for none.                                                                                                                 |
 | `forwardingTimeoutMs`       | `600000` | How long a subagent waits for the parent session to answer a forwarded permission request, in milliseconds. A child whose parent is not draining its inbox gives up in ~2 s regardless, whether that parent runs in this process or its own. |
+| `promptTimeoutMs`           | —        | How long a permission prompt, once shown, waits for an answer before it is dismissed and the request denied, in milliseconds. Unset (the default) means no timer. See [Unanswered prompts](#unanswered-prompts).                             |
 | `promptMaxRows`             | `24`     | Max rows a permission prompt renders before eliding its evidence. The request's own facts are never elided by this budget; `Ctrl+O` expands the prompt to the complete request.                                                              |
 | `promptFieldMaxWidth`       | `400`    | Max characters of any one field shown in a permission prompt. This is what bounds a single long field (a here-string command, say) that would otherwise fill the prompt through wrapping.                                                    |
 | `reviewLogFieldMaxWidth`    | `1000`   | Max characters of any one value written to the review log. A longer value is stored shortened, marked with an ellipsis. Raise it to keep longer values; this is a length bound, not redaction.                                               |
@@ -228,6 +230,29 @@ Only interactive TUI sessions signal; outside interactive mode Pi routes stdout 
 Inside tmux, prefer `"bell"`: tmux passes a BEL through to its own bell handling, but drops OSC notifications unless passthrough is enabled.
 
 To run a program instead (Herdr, `cmux notify`, a push to your phone), write a small extension on the `permissions:ui_prompt` and `permissions:decision` broadcasts; see the [recipe](cross-extension-api.md#recipe-bridging-a-prompt-to-an-external-notifier).
+
+### Unanswered prompts
+
+By default a permission prompt waits until someone answers it.
+For a run you leave unattended, set `promptTimeoutMs` so a prompt nobody answers is denied instead of holding the agent indefinitely:
+
+```jsonc
+{
+  "promptTimeoutMs": 60000
+}
+```
+
+When the window expires, the prompt is dismissed and the request is **denied**; the timeout never approves anything.
+The agent is told that nobody answered the approval prompt within the window, not that you refused it, so it can try another approach or carry on with other work.
+The review log records the decision as `decidedBy: { "kind": "unanswered", "timeoutMs": 60000 }`, and the `permissions:decision` broadcast reports `prompt_unanswered`.
+
+The clock starts when a prompt is shown, not when the request is raised.
+A request waiting behind another open prompt gets its own full window once it is shown, so several unanswered requests take about one window each.
+In the inline TUI dialog, the hint row names the window while it runs, and pressing any key stops the clock: once you start answering (moving the highlight, typing a denial reason), the dialog waits for you to finish.
+The `select` fallback outside TUI mode has no keystroke to watch, so its window runs until you choose an option or it expires.
+
+A request forwarded from a subagent is shown in the parent session, so the **parent's** `promptTimeoutMs` applies to it, and the subagent receives the same unanswered denial.
+The subagent separately stops waiting after `forwardingTimeoutMs`; keep `promptTimeoutMs` below it, or the subagent can give up while the parent's prompt is still open.
 
 ### What a prompt shows
 
