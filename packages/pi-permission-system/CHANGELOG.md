@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [40.2.0](https://github.com/gotgenes/pi-packages/compare/pi-permission-system-v40.1.4...pi-permission-system-v40.2.0) (2026-10-12)
+
+
+### Features
+
+* **pi-permission-system:** deny a permission prompt nobody answers within promptTimeoutMs ([10812e8](https://github.com/gotgenes/pi-packages/commit/10812e83e8c766198d1b8a7eceafee7743bc6b23)), closes [#735](https://github.com/gotgenes/pi-packages/issues/735)
+* **pi-permission-system:** keep a permission prompt open once you start answering it ([39f7e3f](https://github.com/gotgenes/pi-packages/commit/39f7e3fba80d7c7235dc20c574430fb967779f0b)), closes [#735](https://github.com/gotgenes/pi-packages/issues/735)
+
+### Documentation
+
+* **pi-permission-system:** document promptTimeoutMs and the unanswered decider ([38eb4a6](https://github.com/gotgenes/pi-packages/commit/38eb4a6fe651ebc566b4d119a24a1d7645412dd7)), closes [#735](https://github.com/gotgenes/pi-packages/issues/735)
+* **pi-permission-system:** fix stale releasedDecision reference and note the fallback window spans follow-up dialogs ([4cc6b10](https://github.com/gotgenes/pi-packages/commit/4cc6b10327a504823d921fa11bc1b6bfa5bbb82e)), closes [#735](https://github.com/gotgenes/pi-packages/issues/735)
+
 ## [40.1.4](https://github.com/gotgenes/pi-packages/compare/pi-permission-system-v40.1.3...pi-permission-system-v40.1.4) (2026-10-10)
 
 
