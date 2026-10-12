@@ -249,7 +249,7 @@ The review log records the decision as `decidedBy: { "kind": "unanswered", "time
 The clock starts when a prompt is shown, not when the request is raised.
 A request waiting behind another open prompt gets its own full window once it is shown, so several unanswered requests take about one window each.
 In the inline TUI dialog, the hint row names the window while it runs, and pressing any key stops the clock: once you start answering (moving the highlight, typing a denial reason), the dialog waits for you to finish.
-The `select` fallback outside TUI mode has no keystroke to watch, so its window runs until you choose an option or it expires.
+The `select` fallback outside TUI mode has no keystroke to watch, so its window runs until you finish answering or it expires, and it spans the follow-up dialogs too: a window that expires while the grant-scope choice or the denial-reason input is open discards the half-made answer and denies the request as unanswered.
 
 A request forwarded from a subagent is shown in the parent session, so the **parent's** `promptTimeoutMs` applies to it, and the subagent receives the same unanswered denial.
 The subagent separately stops waiting after `forwardingTimeoutMs`; keep `promptTimeoutMs` below it, or the subagent can give up while the parent's prompt is still open.
