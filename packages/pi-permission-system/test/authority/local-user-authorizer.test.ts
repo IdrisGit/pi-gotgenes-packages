@@ -614,7 +614,7 @@ describe("LocalUserAuthorizer", () => {
       await asks.second;
     });
 
-    it("answers a released ask as an unanswered denial", async () => {
+    it("answers a released ask as unavailable, never as a user denial", async () => {
       const asks = makeOverlappingAsks();
       await settleMicrotasks();
 
