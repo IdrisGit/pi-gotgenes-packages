@@ -247,9 +247,9 @@ function carriesComputedWord(layer: readonly CommandWord[]): boolean {
  * 2. Every option in every layer is on that modifier's allowlist. The real
  *    tools accept abbreviations (`timeout --sig KILL 5 rm`) the inner-command
  *    search does not know, and one of them misplaces where the command starts.
- *    Each option, value, and operand must also be literal: the shell splits
- *    `timeout $D pnpm` or expands `timeout {5,sudo} rm` into extra words before
- *    the modifier runs, and one of those may be a wrapper or the real command.
+ *    That every word is also literal is {@link floorExemptionOf}'s condition,
+ *    shared with the core-reader reason: the shell splits `timeout $D pnpm` or
+ *    expands `timeout {5,sudo} rm` into extra words before the modifier runs.
  * 3. The peel ended at an ordinary command, not a wrapper it could not see
  *    past.
  * 4. The inner head is a literal command name. The grammar has no `time`
@@ -284,6 +284,9 @@ function reachedLiteralCommand(inner: readonly CommandWord[]): boolean {
  *
  * Walks the words with the same value-taking table {@link innerCommandIndex}
  * skips by, so an admitted option's value can never be taken for the command.
+ * It reads option shapes only: each caller refuses a computed word before it
+ * gets here ({@link floorExemptionOf}'s literal-layer condition, and
+ * {@link sessionCommandIndex}'s refusal of any token with shell syntax).
  */
 function isAdmittedModifierLayer(layer: readonly CommandWord[]): boolean {
   const name = wrapperName(layer);
@@ -295,15 +298,11 @@ function isAdmittedModifierLayer(layer: readonly CommandWord[]): boolean {
   for (let index = 1; index < layer.length; index++) {
     const word = layer[index].text;
     if (isEnvironmentAssignment(word)) continue;
-    // A word the shell rewrites (`$D`, `{5,sudo}`, `*`) may become several, one
-    // of them a wrapper or the real command, so only a literal word is admitted.
-    if (layer[index].computed) return false;
     if (word === "--") continue;
     if (!word.startsWith("-")) continue;
     if (flags.has(word)) continue;
     if (valueTaking.has(word)) {
       index++;
-      if (layer[index]?.computed) return false;
       continue;
     }
     if (!hasAttachedValue(word, valueTaking)) return false;
