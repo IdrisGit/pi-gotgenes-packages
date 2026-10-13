@@ -66,6 +66,63 @@ Every named killing mutation turned its tests red.
   - Accepted non-blocking item: no `signal.aborted` guard on the inline abort listener.
     It is unreachable, because Pi invokes the `custom` factory synchronously and the window's timer fires at least one macrotask later.
 
+## Stage: Final Retrospective (2026-10-13T03:03:23Z)
+
+### Session summary
+
+One session ran all four stages for a third-party issue whose suggestions had mostly shipped.
+Planning reframed it to the residual timeout question that [#931] was parked on, and three operator gates settled the design.
+Implementation landed eight TDD steps plus a docs fixup, released as `pi-permission-system` 40.2.0, and closed #735 and [#931].
+
+### Observations
+
+#### What went well
+
+- Reading the third-party issue against `main` first turned a "10-minute hang" bug into a status table: three of four suggestions had already shipped, and scenario 2 matched [#907].
+  That reframing is what made the operator's direction choice (settle [#931] here) a one-question gate.
+- The `tidy-first-assessor`'s first recommendation shaped the whole design.
+  It collapsed the dispatcher to one attribution, which let the `AnswerWindow` wrap a single `await` and stamp its own decider.
+  Its exact-arity warning about the `select` assertion at `permission-prompt-component.test.ts` L550 was also correct.
+- Mutation verification caught a wrong plan prediction: `timeoutMs > -1` kills only the zero case.
+  The step's procedure (count reds against the prediction) surfaced it before commit.
+
+#### What caused friction (agent side)
+
+- `missing-context` (planning): the first design gate went out before `agent-renderer.ts` was read.
+  The `unavailable` render's "no interactive UI is available" sentence would have been false for a dialog timeout, which forced a second gate (P1 vs P2).
+  Impact: one extra operator round; no rework.
+- `instruction-violation` (self-identified): the operator answered the first gate with a selection plus a question about agent-approver issues.
+  The `clarification-gates` rule says to answer a question and end the turn; I answered and asked the provenance gate in the same turn.
+  Impact: none observed; the operator answered both.
+- `instruction-violation` (self-identified): unicode escapes typed into `Edit` bodies, a pattern already recorded in the 0859 and 0999 retros.
+  - `\u00b7` in an `oldText` rejected one batch; `\u2014` in another `oldText` was rejected once more.
+  - `\u2502`/`\u251c` landed literally in `architecture.md` and needed a scripted repair.
+  - `\u2014` in a TypeScript comment was decoded by `pi-autoformat`.
+  Impact: two rejected batches and one repair, all caught before commit.
+- `scope-drift` (ship): after a successful release run I checked npm with `pnpm view`, then curled the packument, then the version URL, then read the publish log, then polled.
+  The registry served a stale packument and 404 for the new version for about three minutes after the `publish` job's `Published package @gotgenes/pi-permission-system@40.2.0` line.
+  `/ship` step 13 asks only for the tag.
+  Impact: about 7 tool calls and 4 minutes, no rework.
+
+#### What caused friction (user side)
+
+- None observed; the operator's three gate answers were decisive, and the note pointing at the agent-approver track supplied the Non-Goals home for allow-on-timeout.
+
+### Diagnostic details
+
+- **Model-performance correlation:** all three subagents ran on `anthropic/claude-sonnet-5-5`, attributed from their own transcripts: the `tidy-first-assessor` (65 s), the round-1 `pre-completion-reviewer` (5275 s, 20 turns), and the delta reviewer (938 s, 6 turns).
+  The model fit the work.
+  The round-1 reviewer's wall clock is the outlier: in its second turn it ran `timeout 200 pnpm exec eslint packages/` and `timeout 200 pnpm exec vitest run` concurrently.
+  Its full `pnpm run lint` and `pnpm -r run test` then timed out at 400 s and 900 s, so it never confirmed either gate.
+  My own sequential root runs of both passed in the same hour.
+- **Feedback-loop gap analysis:** verification ran incrementally: the affected test file each Red/Green, `pnpm run check` after every interface change, and the full package suite before each `feat` commit.
+  One full root `pnpm run test` failed two forwarding-liveness tests at ~364 s each; both passed alone and on the next full run (the host-load flake the package skill names).
+
+### Changes made
+
+1. `.pi/agents/pre-completion-reviewer.md` Step 1: run each deterministic check alone in its own tool call with a tool timeout of at least 900 s, never wrapped in a shorter `timeout` or batched with another.
+2. `.pi/skills/releasing/SKILL.md` § Dispatching a release: a just-published version can 404 on npm for a few minutes, so the `publish` job's `Published package` log line is the evidence and the registry is not polled.
+
 [#472]: https://github.com/gotgenes/pi-packages/issues/472
 [#620]: https://github.com/gotgenes/pi-packages/issues/620
 [#698]: https://github.com/gotgenes/pi-packages/issues/698
