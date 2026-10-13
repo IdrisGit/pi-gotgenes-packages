@@ -1094,15 +1094,18 @@ The floor guards unknowability of *scope*, and scope stays the path surfaces' jo
 Such a unit is therefore **not** floored.
 It resolves by the inner command's own `bash` rules instead, and the review log records `floorExemption: "core-reader"` beside the rule that decided, so an allow the floor would once have prompted for is auditable to the reason that let it through.
 
-All four of these must hold, and each is a way the floor's reason could still apply:
+All five of these must hold, and each is a way the floor's reason could still apply:
 
 1. The unit is an indirection wrapper.
    An `sh -c`/`eval` payload is not one — see below.
 2. The command it runs can be established without passing through an inline shell.
    `watch` and `parallel` hand their whole command line to a shell, and `rush` and `rust-parallel` build theirs from a template, so a unit with any of the four as a layer never qualifies: `watch cat x \; rm y` runs `rm`.
-3. That command **proves** a read: a bare-basename core word with no option that withdraws the claim.
+3. Every word the wrapper itself takes (an option, its value, an operand, a `NAME=value` word) is written literally.
+   The shell splits or expands a computed word before the wrapper runs, so `sudo -u $U cat x` with `U="root rm y"` runs `rm y cat x`; quoting does not exempt it, since `"$@"` can vanish and a quoted variable can name an array.
+   A computed word of the command it runs is fine: `sudo -u root cat $X` still qualifies.
+4. That command **proves** a read: a bare-basename core word with no option that withdraws the claim.
    So `xargs sort -o /tmp/x` and `xargs find . -delete` stay floored, and so does `xargs ./grep foo`.
-4. The enclosing statement provably writes no file through a redirect.
+5. The enclosing statement provably writes no file through a redirect.
    A destination the parse cannot resolve — `> $OUT`, `> $(mktemp)` — counts against the exemption rather than for it.
 
 So `xargs grep -l foo`, `xargs wc -l`, `xargs sed -n 1p`, `find . -name '*.ts' -exec cat {} +`, and the no-op probe `sudo -n true` stop prompting under a matching `bash` allow, while `xargs rm`, `xargs sed -i`, and `find . -exec sh -c '…' \;` still prompt.
@@ -1115,7 +1118,7 @@ Three things this does **not** change:
   Under `bash: {"*": "allow", "grep *": "deny"}`, `xargs grep foo` is denied rather than merely prompted.
 - Path gating is untouched.
   The exemption decides the `bash` surface only, and every path token the command projects still goes through `path` and `external_directory` with the direction its command proved.
-  Clause 4 is what keeps that from being a weaker promise than it sounds: a redirect destination the parse cannot resolve (`> $OUT`, `> $(mktemp)`) is not projected onto those surfaces either, so the wrapper keeps its floor rather than relying on a gate that would not see the write.
+  Clause 5 is what keeps that from being a weaker promise than it sounds: a redirect destination the parse cannot resolve (`> $OUT`, `> $(mktemp)`) is not projected onto those surfaces either, so the wrapper keeps its floor rather than relying on a gate that would not see the write.
 
 ##### A wrapper that only modifies execution
 
@@ -1127,7 +1130,7 @@ All four of these must hold, and each keeps the decision about the command that 
 
 1. **Every** wrapper layer is one of the five.
    `time sudo rm -rf x` and `sudo time pnpm test` stay floored, as do `nohup` (it may write `nohup.out`) and `flock` (it creates its lock file).
-2. Every option on each layer is one that wrapper is known to take, spelled in full, and every option, value, and operand is written literally (an environment assignment, which the shell does not split, may be computed).
+2. Every option on each layer is one that wrapper is known to take, spelled in full, and every option, value, operand, and `NAME=value` word is written literally.
    A word the shell rewrites (`timeout $D …`, `timeout {5,sudo} …`) may become several, one of them a wrapper, so it keeps the floor.
    So `timeout --sig KILL 5 …` (an abbreviation) and `nice -5 …` stay floored, and so do `time`'s file-writing `-o`, `--output`, and `-a`.
    The admitted options are `time -p`/`-l`/`-h`/`-f`; `timeout -s`/`-k`/`-f`/`-p`/`-v` and their long forms; `nice -n`/`--adjustment`; and `stdbuf -i`/`-o`/`-e` and their long forms.

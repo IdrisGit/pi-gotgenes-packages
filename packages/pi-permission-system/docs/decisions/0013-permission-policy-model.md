@@ -184,7 +184,8 @@ Four guards keep the inherited verdict naming the command that really runs; with
 - Every option on a modifier layer is on that wrapper's allowlist, with value-taking options drawn from the same table the inner-command search skips by.
   The real tools accept long-option abbreviations that search does not know, so `timeout --sig KILL 5 rm -rf /` was read as running `5 rm -rf /`.
   `time`'s file-writing options (`-o`, `--output`, `-a`) are never admitted.
-  Every option, value, and operand on a modifier layer must also be literal (an environment assignment, which does not split, is exempt), since the shell splits or expands a computed word into others before the modifier runs: `timeout {5,sudo} rm x` runs `timeout 5 sudo rm x`.
+  Every option, value, and operand on a modifier layer must also be literal, since the shell splits or expands a computed word into others before the modifier runs: `timeout {5,sudo} rm x` runs `timeout 5 sudo rm x`.
+  The amendment of 2026-10-13 extends this to the core-reader clause and withdraws an exemption for environment assignments.
   A `--` ends the options but not `timeout`'s duration, so `timeout -- 5 sudo rm x` peels to `sudo rm x`, not to a command named `5`.
 - The peel ends at an ordinary command, not a wrapper it could not see past.
 - The inner head is a literal command name, not shell syntax: `tree-sitter-bash` has no `time` keyword, so `time { rm …; }` and `time ( … )` reach the clause with `{` or a subshell where the name should be.
@@ -196,6 +197,17 @@ A destination the parse cannot resolve (`> $OUT`) is projected for neither form,
 When both clauses hold, the core-reader reason is the one recorded.
 
 Measured over the local review log from 2026-07: 298 of 1027 prompts were floored, and 73 more are relieved by this clause alone, beside the 86 the core-reader clause relieves (`scripts/measure-wrapper-transparency.mjs`).
+
+### Amendment, 2026-10-13 — every word a wrapper layer passes is literal, for both clauses
+
+The core-reader clause judged the command the wrapper peel located, but the peel reads a layer's words by their source text, so a computed word in an option, a value, a leading operand, or a `NAME=value` argument could split into the command that really runs: `sudo -u $U cat x` with `U="root rm y"` runs `rm y cat x` as root while the clause judged `cat x` ([#1056]).
+
+**Neither clause lifts the floor when any word a peeled layer passes its wrapper is computed**, quoted or not.
+The rule is one precondition shared by both clauses, so they cannot disagree about a layer.
+A quoted word is not exempt, for the reason the 2026-09-29 amendment gives: a quoted parameter expansion may split (a nameref to an array) or vanish (`"$@"`, so `sudo -u "$@" cat rm` runs `rm` as the user `cat`).
+A `NAME=value` word is not exempt either: in a wrapper's argument position it is an ordinary word, which the shell splits like any other (`env FOO=$Y cat x` with `Y="1 rm y"` runs `rm y cat x`).
+The exemption the 2026-10-05 text gave an environment assignment on a modifier layer rested on the opposite claim, and is withdrawn.
+The inner command's own words are not part of the rule: `sudo -u root cat $X` runs `cat` whatever `$X` becomes, and the core's argument-independence already covers them.
 
 ## Context
 
@@ -813,4 +825,5 @@ Issue [#620] carries the judgment slice the chain retains under §7.
 [#963]: https://github.com/gotgenes/pi-packages/issues/963
 [#1027]: https://github.com/gotgenes/pi-packages/issues/1027
 [#1043]: https://github.com/gotgenes/pi-packages/issues/1043
+[#1056]: https://github.com/gotgenes/pi-packages/issues/1056
 [openai/codex#28732]: https://github.com/openai/codex/issues/28732
