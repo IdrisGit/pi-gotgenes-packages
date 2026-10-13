@@ -1779,7 +1779,7 @@ Release: independent
 **Cause:** `floorExemptionOf`'s core-reader reason judges the command the peel locates, but the peel reads each layer's words by source text, so an unquoted computed word in an option, a value, a leading operand, or a `NAME=value` argument can split into the command that really runs: `sudo -u $U cat x` with `U="root rm y"` runs `rm y cat x`, and `timeout $D cat x` with `D="5 rm"` runs `rm cat x`.
 
 - **Smell:** Category C (the execution-modifier clause's literal-layer guard missing from its sibling clause).
-- **Target:** `src/access-intent/bash/wrapper-analysis.ts` — the core-reader reason refuses when a peeled layer carries a word before its inner command that the shell can split, reusing `CommandWord.computed`; the plan settles whether a double-quoted computed word, which cannot split, is admitted.
+- **Target:** `src/access-intent/bash/wrapper-analysis.ts` — the core-reader reason refuses when a peeled layer carries a word before its inner command that the shell can split, reusing `CommandWord.computed`; the plan settles whether a double-quoted computed word is admitted (it is not: a quoted parameter expansion may split through a nameref or vanish as `"$@"`).
 - **Constraint:** fail-closed, and the same rule as `isAdmittedModifierLayer`'s, so the two clauses cannot disagree about a layer.
 - **Soft dependency:** [#1053], which reshapes the same peel.
 - **Outcome:** under `bash: {"*": "allow", "rm *": "deny"}`, `sudo -u $U cat x`, `env FOO=$Y cat x`, and `timeout $D cat x` ask with `<indirection-bash-wrapper>`.
