@@ -1823,6 +1823,29 @@ describe("BashProgram", () => {
           exemptions("echo hi > $(xargs grep foo)"),
         ).resolves.toEqual([undefined, "core-reader"]);
       });
+
+      describe("a computed word in a wrapper's options", () => {
+        describe("keeps the exemption for a literal layer", () => {
+          it.each([
+            ["sudo -u root cat x", "every layer word is literal"],
+            ["sudo -u ~ cat x", "a tilde the program leaves alone is known"],
+            ["sudo -u $HOME cat x", "an unrebound HOME is known"],
+            ["sudo -u root cat $X", "the computed word is the reader's own"],
+            ["xargs -I{} cat {}", "an empty brace pair is literal"],
+            ["xargs -I {} cat {}", "an empty brace pair is literal"],
+            ["find . -name '*.ts' -exec cat {} +", "a quoted glob is literal"],
+            ["env HOME=~ cat x", "a tilde assignment value is known"],
+          ])("exempts %s (%s)", async (command) => {
+            await expect(exemptions(command)).resolves.toEqual(["core-reader"]);
+          });
+
+          it("exempts a modifier carrying a literal assignment", async () => {
+            await expect(exemptions("time FOO=1 pnpm test")).resolves.toEqual([
+              "execution-modifier",
+            ]);
+          });
+        });
+      });
     });
 
     describe("units from a parse tree-sitter could not resolve (#840)", () => {
