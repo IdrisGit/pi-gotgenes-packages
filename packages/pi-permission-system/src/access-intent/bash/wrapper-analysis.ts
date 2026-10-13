@@ -158,7 +158,7 @@ export function executedUnitOf(
  * alike. Argument-independence is the core's admission bar, so there are no
  * arguments that make `grep` write a file.
  *
- * Four things must hold for it, and each is a way the reason could still hold:
+ * Five things must hold for it, and each is a way the reason could still hold:
  *
  * 1. The unit is an indirection wrapper — an ordinary command has no floor.
  * 2. Unwrapping reached the inner command without passing through an opaque
@@ -168,16 +168,21 @@ export function executedUnitOf(
  *    line to a shell or builds it from a template
  *    ({@link OPAQUE_COMMAND_LINE_WRAPPERS}) is that payload in another shape:
  *    `watch cat x \; rm y` runs `rm`, so no layer may be one.
- * 3. The inner command *proves* a read — bare-basename core word, retraction
+ * 3. Every word a peeled layer passes its wrapper is literal: each option,
+ *    value, operand, and `NAME=value` word. The shell splits or expands a
+ *    computed one before the wrapper runs, so one of the words it becomes may
+ *    be the command that really runs — `sudo -u $U cat x` with
+ *    `U="root rm y"` runs `rm y cat x` as root.
+ * 4. The inner command *proves* a read — bare-basename core word, retraction
  *    guards applied, so `xargs sort -o /tmp/x` and `xargs find . -delete` are
  *    not transparent.
- * 4. The unit writes no file through a redirect, which the caller reads off
+ * 5. The unit writes no file through a redirect, which the caller reads off
  *    the parse tree and this module never sees.
  *
  * `"execution-modifier"`: every wrapper layer only changes *how* the visible
  * inner command runs, so the unit resolves by that command's own rule whatever
- * it does (see {@link onlyModifiesExecution}). The first two conditions above
- * hold for it too; the core-reader reason is preferred when both apply.
+ * it does (see {@link onlyModifiesExecution}). The first three conditions
+ * above hold for it too; the core-reader reason is preferred when both apply.
  */
 export function floorExemptionOf(
   words: readonly CommandWord[],
@@ -191,7 +196,8 @@ export function floorExemptionOf(
   if (
     unwrapped.kind === "opaque" ||
     unwrapped.peeled.length === 0 ||
-    unwrapped.peeled.some(runsOpaqueCommandLine)
+    unwrapped.peeled.some(runsOpaqueCommandLine) ||
+    unwrapped.peeled.some(carriesComputedWord)
   ) {
     return undefined;
   }
@@ -209,6 +215,17 @@ export function floorExemptionOf(
 function runsOpaqueCommandLine(layer: readonly CommandWord[]): boolean {
   const name = wrapperName(layer);
   return name !== undefined && OPAQUE_COMMAND_LINE_WRAPPERS.has(name);
+}
+
+/**
+ * True when the shell may rewrite a word a peeled layer passes its wrapper.
+ *
+ * The wrapper name is skipped: it is matched by its text against a fixed
+ * vocabulary, so a computed spelling never classifies as a wrapper, and the
+ * word adapter reads a `command_name` node as computed whatever it spells.
+ */
+function carriesComputedWord(layer: readonly CommandWord[]): boolean {
+  return layer.slice(1).some((word) => word.computed);
 }
 
 /**

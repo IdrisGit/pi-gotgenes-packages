@@ -528,6 +528,23 @@ describe("floorExemptionOf", () => {
     });
   });
 
+  describe("a computed word in a peeled layer", () => {
+    it.each([
+      ["sudo -u $U cat x", "an option value may split"],
+      ["env FOO=$Y cat x", "an assignment argument may split"],
+      ["timeout $D cat x", "a leading operand may split"],
+      ["time FOO=$Y pnpm test", "a modifier's assignment may split"],
+    ])("withholds every exemption from %s (%s)", (unit) => {
+      expect(
+        floorExemptionOf(words(unit), { writesViaRedirect: false }),
+      ).toBeUndefined();
+    });
+
+    it("keeps the exemption for a computed word of the inner command", () => {
+      expect(isTransparent("sudo -u root cat $X")).toBe(true);
+    });
+  });
+
   describe("an execution modifier", () => {
     /** The exemption a unit earns, with or without a write-proving redirect. */
     function exemptionOf(

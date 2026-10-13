@@ -1340,6 +1340,32 @@ describe("resolveBashCommandCheck: env, xargs, and doas option grammars", () => 
   });
 });
 
+describe("resolveBashCommandCheck: a computed word in a wrapper's options", () => {
+  beforeAll(async () => {
+    await warmBashParser();
+  });
+
+  const policy: Record<string, PermissionState> = {
+    "*": "allow",
+    "rm *": "deny",
+  };
+
+  it.each([
+    ["sudo -u $U cat x", 'U="root rm y" runs rm y cat x as root'],
+    ["sudo FOO=$Y cat x", 'Y="1 rm y" runs rm y cat x as root'],
+    ["env FOO=$Y cat x", 'Y="1 rm y" runs rm y cat x'],
+    ["env -u $U cat x", 'U="X rm" runs rm cat x'],
+    ["xargs -n $N cat", 'N="1 rm" runs rm cat'],
+    ["doas -u $U cat x", 'U="root rm y" runs rm y cat x as root'],
+    ["timeout $D cat x", 'D="5 rm" runs rm cat x'],
+    ['sudo -u "$U" cat x', "a nameref to an array splits the quoted word"],
+  ])("keeps the floor for %s (%s)", (command) => {
+    const result = decide(policy, command);
+    expect(result.state).toBe("ask");
+    expect(result.matchedPattern).toBe("<indirection-bash-wrapper>");
+  });
+});
+
 describe("resolveBashCommandCheck: a wrapper's session grant", () => {
   beforeAll(async () => {
     await warmBashParser();

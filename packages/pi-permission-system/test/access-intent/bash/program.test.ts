@@ -1845,6 +1845,48 @@ describe("BashProgram", () => {
             ]);
           });
         });
+
+        describe("loses the exemption for a computed layer word", () => {
+          // The shell splits or expands the word before the wrapper runs, so
+          // one of the words it becomes may be the command that really runs:
+          // `sudo -u $U cat x` with `U="root rm y"` runs `rm y cat x` as root.
+          it.each([
+            ["sudo -u $U cat x", "an option value may split"],
+            ["doas -u $U cat x", "an option value may split"],
+            ["env -u $U cat x", "an option value may split"],
+            ["env -u$U cat x", "an attached value may split"],
+            ["xargs -n $N cat", "an option value may split"],
+            ["timeout $D cat x", "a leading operand may split"],
+            ["sudo FOO=$Y cat x", "an assignment argument may split"],
+            ["env FOO=$Y cat x", "an assignment argument may split"],
+            ['env PATH="$PATH:/x" cat x', "a quoted expansion may split"],
+            ['sudo -u "$U" cat x', "a nameref splits a quoted expansion"],
+            ['sudo -u "$@" cat x', "a quoted $@ may vanish"],
+            ["sudo -u * cat x", "a glob may expand to several words"],
+            ["sudo -u {root,rm} cat x", "brace expansion adds a word"],
+            ["sudo -u r\\oot cat x", "an escape is rewritten"],
+            ["find . -name *.ts -exec cat {} +", "an unquoted glob may expand"],
+            ["sudo -u $U -- cat x", "the word sits before the end of options"],
+            ["timeout 5 sudo -u $U cat x", "an inner layer's value may split"],
+            ["sudo -u $U timeout 5 cat x", "an outer layer's value may split"],
+            ["time FOO=$Y pnpm test", "a modifier's assignment may split"],
+          ])("does not exempt %s (%s)", async (command) => {
+            await expect(exemptions(command)).resolves.toEqual([undefined]);
+          });
+
+          it("does not exempt a value a command substitution produces", async () => {
+            // The substitution's own command is a unit of its own.
+            await expect(
+              exemptions('sudo -u "$(whoami)" cat x'),
+            ).resolves.toEqual([undefined, undefined]);
+          });
+
+          it("does not exempt a value spelled from a rebound HOME", async () => {
+            await expect(
+              exemptions('HOME="a rm"; sudo -u $HOME cat x'),
+            ).resolves.toEqual([undefined, undefined]);
+          });
+        });
       });
     });
 
