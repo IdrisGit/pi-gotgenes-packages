@@ -28,3 +28,22 @@ The plan is four steps: Tidy-First pins, the `fix:` guard, the `refactor:` remov
 #### Deferred tidyings
 
 - `src/access-intent/bash/node-text.ts`: `WordReader.argWord` reads a `command_name` node as computed; harmless today, but a future reader of `words[0].computed` would be misled.
+
+## Stage: Implementation — TDD (2026-10-13T16:41:47Z)
+
+### Session summary
+
+All four TDD steps landed as planned: the Tidy-First pins (`test:`), the shared `carriesComputedWord` precondition in `floorExemptionOf` (`fix:`), the removal of `isAdmittedModifierLayer`'s redundant `computed` checks (`refactor:`), and the ADR 0013 / `configuration.md` / `architecture.md` updates (`docs:`), plus one reviewer-driven docs fix.
+The `pi-permission-system` suite went from 6077 to 6122 tests (+45).
+Every killing mutation the plan named produced the predicted reds, including the two measured at planning time (12 existing modifier tests once the guard is the only pin; `nice -n $N mytool a` red only after Step 3).
+
+### Observations
+
+- One deviation: `sudo -u "$(whoami)" cat x` enumerates a second unit (`whoami`), so it moved out of the `it.each` table into its own test asserting `[undefined, undefined]`.
+- The baseline full suite flaked twice on timing tests (`composition-root.test.ts`, `approval-escalator.test.ts`) at a load average near 33; both passed in isolation, and the suite ran green once load dropped.
+- Two tooling traps hit during mutation checks: a restoring `cp` batched beside the mutating `Edit` ran concurrently and overwrote the mutation (a false "survived"), and a `Read` right after an `Edit` once saw the file mid-rewrite by `pi-autoformat` (1 line, then 1166).
+  Running every restore in its own call and diffing against the saved green copy before reading results caught both.
+- Pre-completion reviewer: WARN, then PASS on the delta.
+  The WARN was the #1056 roadmap step's `Target:` line still saying a double-quoted word "cannot split"; fixed in `docs(pi-permission-system): the #1056 roadmap target no longer says a quoted word cannot split`.
+  The reviewer's independent 6,640-command sweep found no computed-layer wrapper earning an exemption at HEAD (7,848 failures on base) and byte-identical session patterns.
+  It re-noted that `find . -exec cat {} + -delete` earns `core-reader` on base and HEAD alike (words after the exec terminator are not layer words); planning had already judged this not a floor bypass.
