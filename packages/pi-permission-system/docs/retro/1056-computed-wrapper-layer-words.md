@@ -61,3 +61,53 @@ The plan's marker is `**Release:** ship independently`; the `fix(pi-permission-s
 
 - The one deferred tidying (`WordReader.argWord` reading a `command_name` node as computed) is recorded under the Planning stage's `#### Deferred tidyings`.
 - The baseline full suite flaked on two timing tests under heavy machine load; if the root's pre-push run hits one, re-run the file alone before suspecting this change.
+
+## Stage: Final Retrospective (2026-10-14T15:56:35Z)
+
+### Session summary
+
+The peer worktree planned (Opus), implemented (Opus), and synced (Sonnet) the computed-word guard in `floorExemptionOf`; the root fast-forward-merged it, CI passed, #1056 closed, and `pi-permission-system-v40.2.1` released.
+The design held from planning to ship: every mutation the plan named killed what it predicted, and the corpus measurement (1 changed unit in 532) matched the reviewer's independent sweep.
+
+### Observations
+
+#### What went well
+
+- Planning measured against organic data before asking: a disposable spike through the real parse and gate, a prototype run over 11,206 review-log commands, and bash 5.3 probes of the split model.
+  The one `ask_user` gate settled three decisions (quoted words, one rule vs two, `fix:` vs `fix!:`) with no bounce.
+- The planning probe caught a false documented claim ("an environment assignment does not split") that three docs had carried since `1ed420e0`, and the plan corrected it rather than preserving it.
+- The pre-completion reviewer ran its own 6,640-command sweep instead of trusting the stage notes' coverage claim, and caught one stale roadmap `Target:` phrase.
+
+#### What caused friction (agent side)
+
+- `instruction-violation` (self-identified) — TDD mutation checks batched a call with an `Edit` on the same file three times, and each produced a misleading result.
+  Turn 19 batched `git checkout`, the mutating `Edit`, and the `git diff --stat; vitest run` in one block, and the diff read the file as wholly deleted.
+  Turn 35 batched the restoring `cp /tmp/green.ts` with the next mutation's `Edit`, so the copy overwrote the mutation (a false "survived").
+  Turn 53 batched an `Edit` with a `Read` of the same file, which saw 1 line.
+  The TDD breadcrumb attributed the first and third to `pi-autoformat` rewriting the file; the common cause is that calls in one batch run concurrently with the `Edit` and its format pass.
+  `.pi/prompts/tdd-plan.md` already says the restoring `cp` "gets its own call too", and the same class recurred in [#609], [#951], and [#979], each answered with one more clause naming one more pairing.
+  Impact: about six extra tool calls to detect and redo; no wrong result landed, because the peer diffed against the green copy before reading each run.
+- `missing-context` (self-identified, at retro) — the ship's fold-in scan grepped `docs/roadmap*` and `docs/*.md`, which miss the package roadmap in `docs/architecture/architecture.md`, so the check for a step heading naming a second issue never ran.
+  `.pi/prompts/ship.md` names the heading shape but not the file.
+  Impact: none here (the #1056 heading names no second issue, confirmed at retro), but a real fold-in would have stayed open.
+- `other` — the planning and TDD stages read file regions with `sed -n` and `awk` in `bash` about a dozen times where `Read` with an offset was the instructed tool.
+  Impact: added friction but no rework.
+
+#### What caused friction (user side)
+
+- Nothing notable; the operator's involvement was the one strategic design gate and the stage handoffs.
+
+### Diagnostic details
+
+- **Model-performance correlation** — planning and TDD ran on `claude-opus-5-5`, sync on `claude-sonnet-5-5` (mechanical; appropriate), and all three subagents (the `tidy-first-assessor`, 10 turns; the `pre-completion-reviewer`, 32 then 7 turns) on `claude-sonnet-5-5`, attributed from their own transcripts.
+  The reviewer's judgment work was sound (a real finding plus an independent sweep), so no mismatch.
+- **Feedback-loop gap analysis** — verification was incremental: per-file Red/Green runs, a full package suite and `check` before each source commit, root gates before the reviewer, and the pre-push gates again on the merged tree.
+
+### Changes made
+
+1. `.pi/prompts/tdd-plan.md`: one general rule ahead of the step loop (never batch an `Edit`/`Write` with a call that reads, runs, copies, or diffs the same file) replaces the Red-step and save-copy concurrency clauses, and the restoring `cp` now rides the mutation's run command instead of getting its own call.
+2. `.pi/prompts/ship.md`: the fold-in rule names the package's `docs/architecture/architecture.md` as where the roadmap step heading lives.
+
+[#609]: https://github.com/gotgenes/pi-packages/issues/609
+[#951]: https://github.com/gotgenes/pi-packages/issues/951
+[#979]: https://github.com/gotgenes/pi-packages/issues/979
