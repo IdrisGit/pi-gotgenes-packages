@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [40.2.1](https://github.com/gotgenes/pi-packages/compare/pi-permission-system-v40.2.0...pi-permission-system-v40.2.1) (2026-10-14)
+
+
+### Bug Fixes
+
+* **pi-permission-system:** a computed word in a wrapper's options keeps the indirection floor ([754a5fa](https://github.com/gotgenes/pi-packages/commit/754a5fadcab0aeac765ecb8cf423b1fb55e8d4d5))
+
+### Documentation
+
+* **pi-permission-system:** one literal-word rule for both wrapper floor exemptions ([334318a](https://github.com/gotgenes/pi-packages/commit/334318a0a918557e92741d442cba7728b66cc92e))
+
 ## [40.2.0](https://github.com/gotgenes/pi-packages/compare/pi-permission-system-v40.1.4...pi-permission-system-v40.2.0) (2026-10-12)
 
 
