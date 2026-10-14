@@ -47,3 +47,17 @@ Every killing mutation the plan named produced the predicted reds, including the
   The WARN was the #1056 roadmap step's `Target:` line still saying a double-quoted word "cannot split"; fixed in `docs(pi-permission-system): the #1056 roadmap target no longer says a quoted word cannot split`.
   The reviewer's independent 6,640-command sweep found no computed-layer wrapper earning an exemption at HEAD (7,848 failures on base) and byte-identical session patterns.
   It re-noted that `find . -exec cat {} + -delete` earns `core-reader` on base and HEAD alike (words after the exec terminator are not layer words); planning had already judged this not a floor bypass.
+
+## Stage: Sync (worktree) (2026-10-14T14:46:09Z)
+
+### Session summary
+
+`pnpm run lint` and `pnpm fallow dead-code` pass from the worktree root; the TDD stage's reviewer WARN was already settled (PASS on the delta), so nothing was open.
+The plan's marker is `**Release:** ship independently`; the `fix(pi-permission-system): a computed word in a wrapper's options keeps the indirection floor` commit is what the release will carry, and no follow-up issues were filed.
+
+**Peer session transcript:** `/Users/chris/.pi/agent/sessions/--Users-chris-development-pi-pi-packages-worktrees-issue-1056--/2026-10-13T04-25-36-556Z_01a13382-402c-7372-8308-ba2caa8d68bb.jsonl` — read with `read_session_file({ path: "<path>" })` for message-level verification at land/retro time.
+
+### Observations
+
+- The one deferred tidying (`WordReader.argWord` reading a `command_name` node as computed) is recorded under the Planning stage's `#### Deferred tidyings`.
+- The baseline full suite flaked on two timing tests under heavy machine load; if the root's pre-push run hits one, re-run the file alone before suspecting this change.
