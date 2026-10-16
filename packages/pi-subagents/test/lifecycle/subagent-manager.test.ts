@@ -557,7 +557,7 @@ describe("SubagentManager", () => {
         expect(manager.abortAll()).toBe(2);
 
         // Only the queued agent notifies here: the running one's session creation
-        // never resolves, so its run never reaches completeRun/failRun.
+        // never resolves, so its run never reaches a terminal transition.
         expect(completed).toHaveLength(1);
         expect(completed[0]).toBe(manager.getRecord(queued));
         expect(manager.getRecord(queued)!.stoppedWhileQueued).toBe(true);

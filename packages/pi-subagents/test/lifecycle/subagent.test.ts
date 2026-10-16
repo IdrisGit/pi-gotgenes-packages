@@ -238,11 +238,6 @@ function createResumableAgent(overrides?: {
 	return { agent, session, stub };
 }
 
-// Every other rejection test here stubs runTurnLoop with a vi.fn, so it pins
-// how a throw is routed but nothing about what produces one. These wire a real
-// SubagentSession over a mock AgentSession so the provider-error read and the
-// failRun routing are exercised as one path (#889).
-
 describe("Subagent", () => {
 	describe("construction", () => {
 		it("sets required fields from init", () => {
@@ -1437,6 +1432,10 @@ describe("Subagent", () => {
 		});
 	});
 
+	// Every other rejection test here stubs runTurnLoop with a vi.fn, so it pins
+	// how a throw is routed but nothing about what produces one. These wire a real
+	// SubagentSession over a mock AgentSession so the provider-error read and the
+	// failure routing are exercised as one path (#889).
 	describe("provider failures reach the record", () => {
 		/**
 		 * Settle a turn the way the SDK does: append the assistant message to agent
