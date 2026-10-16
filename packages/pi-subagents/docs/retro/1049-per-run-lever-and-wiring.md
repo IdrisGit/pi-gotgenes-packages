@@ -40,5 +40,32 @@ A disposable Vitest spike against the real `Subagent` and `SubagentSession` meas
 - `packages/pi-subagents/src/lifecycle/subagent-session.ts`: merging the `runTurnLoop`/`resumeTurnLoop` tails was rejected as [#1050]'s scope.
 - `packages/pi-subagents/src/lifecycle/subagent.ts`: a `private observe(session)` extraction for the duplicated `subscribeSubagentObserver` call was rated optional and not folded in.
 
+## Stage: Implementation — TDD (2026-10-16T02:20:24Z)
+
+### Session summary
+
+All five plan steps landed as five commits, plus two review follow-ups (a `docs:` correction to the [#1050] roadmap entry and a `test:` pin), each its own commit.
+The five steps were: the preparatory `test:` migration, the `SubagentRun` `refactor:`, two `fix:` steps, and the roadmap mark.
+The pi-subagents suite went from 2100 to 2116 tests in 86 files (the plan estimated about 2116).
+Pre-completion reviewer: WARN on the first round, PASS on the delta.
+
+### Observations
+
+- Every killing mutation behaved as predicted.
+  Each step-3 mutation (remove the guard, stale fallback text, `failIfProviderErrored` on the skipped path, guard below `enforceTurnBudget`, drop `completed`) killed exactly its own class.
+  Step 4's "move the check below workspace preparation" killed only the provider test, as planned.
+- Deviation: step 3 put the fired-signal guard in one private `promptForAnswer` helper that both loops share, rather than duplicating it.
+  That removed the `runTurnLoop`/`resumeTurnLoop` production clone group the roadmap had assigned to [#1050]; `fallow dupes` now reports only a `subagent-state.ts`/test-helper group.
+  `lifecycle.completed` now fires after the listener cleanup rather than before it; the reviewer confirmed nothing observes that order.
+- Deviation: step 2 deleted one constructor test, not two; the other also asserted zeroed stats, so only its `abortController` line went.
+- The plan's resume born-aborted test could not use `parkLoopUntilSignalled`: a stub parked on an already-fired signal never resolves, because its `abort` listener never fires.
+  The test captures `abortedAtEntry` from a resolving stub instead.
+- The step-3 `fix:` subject was reworded before review, from the turn-loop seam to the observable outcome ("an abort that lands while a child is starting stops it before its first turn"), with a scripted reword rebase; the tree diff against a backup tag was empty.
+- `lifecycle/subagent.ts` grew from 834 to 850 lines; the phase's ≤ 700 target rests on [#1050] and [#1051].
+- Reviewer warnings (round 1), both fixed and confirmed by the delta round:
+  - The [#1050] roadmap entry still described the clone group this change removed.
+  - No test covered a caller signal that fires during `onStarted`.
+
 [#949]: https://github.com/gotgenes/pi-packages/issues/949
 [#1050]: https://github.com/gotgenes/pi-packages/issues/1050
+[#1051]: https://github.com/gotgenes/pi-packages/issues/1051
