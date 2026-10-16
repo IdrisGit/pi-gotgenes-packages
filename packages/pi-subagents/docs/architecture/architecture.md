@@ -1050,7 +1050,7 @@ Release: independent
 - **Hard dependency:** [#1049] — the run is what carries the mode.
 - **Design question the step must settle:** whether `SubagentRecord.isBackground` keeps its spawn-time meaning or reports the current run's mode, under decision 0005 (the snapshot is by value, and giving a field a new meaning needs the same care as retyping it).
 - **Outcome:** a record running a background resume shows in the widget whatever mode it was spawned in (pinned).
-- **Commit type:** `fix:`.
+- **Commit type:** `fix!:` (the public `SubagentRecord.isBackground` changed meaning).
 - **Impact 3 / Risk 2 / Priority 12.**
 
 Landed: `SubagentRun` carries its mode (`inBackground`), and `Subagent.isBackground`, with the public `SubagentRecord.isBackground` copied from it, reports the current run's mode: the spawn's before the first run, then each run's own.
@@ -1161,7 +1161,7 @@ Every Track A step rewrites `lifecycle/subagent.ts`, so those steps sequence rat
 ### Release batches
 
 - Independently releasable: [#947], [#1048], [#1049], [#1050], [#1012], [#1051], [#1013], [#912], [#1017].
-- Release vehicles: [#947] (`feat:` or `fix:`, decided at plan time), [#1049] (`fix:` for [#949]), [#1050] (`fix:` for the resume's workspace rule), [#1012] (`fix:`), [#1013] (decided at plan time), [#912] (`feat:`), and [#1017] (`docs:` for the configuration note).
+- Release vehicles: [#947] (`feat:` or `fix:`, decided at plan time), [#1049] (`fix:` for [#949]), [#1050] (`fix:` for the resume's workspace rule), [#1012] (`fix!:`), [#1013] (decided at plan time), [#912] (`feat:`), and [#1017] (`docs:` for the configuration note).
   [#1048] and [#1051] are `refactor:` only and cut no release on their own.
 - No batches: every step leaves the package releasable, and the refactoring steps preserve behavior.
 
