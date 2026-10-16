@@ -328,6 +328,80 @@ const shellToolsSchema = z
     ],
   });
 
+const declaredEffectSchema = z.enum(["read", "write"]).meta({
+  description:
+    "A filesystem effect: read (the command only reads its path operands) or write (it may modify them).",
+});
+
+const declaredEffectsSchema = z
+  .union([declaredEffectSchema, z.array(declaredEffectSchema)])
+  .meta({
+    description:
+      'The filesystem effects of a command\'s path operands: "read", "write", or an array of them. An empty array declares that the operands touch no file, so they are withdrawn from the path surfaces.',
+  });
+
+const optionStemSchema = z
+  .string()
+  .regex(/^-{1,2}[^-=\s][^=\s]*$/, {
+    message:
+      "An option stem starts with '-' or '--' and contains no whitespace or '='.",
+  })
+  .meta({
+    description:
+      "An option whose appearance anywhere in the command withdraws the declaration (e.g. '-i', '--in-place').",
+  });
+
+const subcommandKeySchema = z
+  .string()
+  .regex(/^[^-\s]\S*$/, {
+    message:
+      "A subcommand is one word that does not start with '-' (e.g. 'log').",
+  })
+  .meta({ description: "A subcommand word, matched exactly." });
+
+const commandKeySchema = z
+  .string()
+  .regex(/^[^/\\\s]+$/, {
+    message:
+      "A command is a bare basename (e.g. 'git'), with no path separator or whitespace.",
+  })
+  .meta({
+    description:
+      "A command's bare basename, matched exactly against the command's head word.",
+  });
+
+const commandEffectsEntrySchema = z
+  .strictObject({
+    effects: declaredEffectsSchema.optional(),
+    unlessOption: z.array(optionStemSchema).optional().meta({
+      description:
+        "Option stems whose appearance anywhere in the command withdraws the declaration, so its path operands fall back to consulting both directional surfaces.",
+    }),
+    get subcommands() {
+      return z
+        .record(
+          subcommandKeySchema,
+          z.union([commandEffectsEntrySchema, declaredEffectsSchema]),
+        )
+        .optional()
+        .meta({
+          description:
+            "Subcommands, keyed by the exact word that follows the command (or its parent subcommand). A value is a nested entry or, as a shorthand, its effects.",
+        });
+    },
+  })
+  .meta({
+    id: "commandEffectsEntry",
+    description:
+      "What a command does to the filesystem paths it is given: its effects, the options that withdraw the declaration, and its subcommands.",
+  });
+
+/** The `commandEffects` map: command basename → its declared effects. */
+export const commandEffectsSchema = z.record(
+  commandKeySchema,
+  commandEffectsEntrySchema,
+);
+
 /**
  * The on-disk config file shape.
  *
@@ -468,6 +542,12 @@ export type FlatPermissionConfig = z.infer<typeof permissionSchema>;
 
 /** The `shellTools` map: tool name → shell-alias argument mapping. */
 export type ShellToolsConfig = z.infer<typeof shellToolsSchema>;
+
+/** One declared command, or subcommand, in the `commandEffects` map. */
+export type CommandEffectsEntry = z.infer<typeof commandEffectsEntrySchema>;
+
+/** The `commandEffects` map: command basename to its declared effects. */
+export type CommandEffectsConfig = z.infer<typeof commandEffectsSchema>;
 
 /** The raw config file shape after validation (all fields optional). */
 export type UnifiedPermissionConfig = z.infer<typeof unifiedConfigSchema>;
