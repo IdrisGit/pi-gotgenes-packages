@@ -127,37 +127,55 @@ export class SubagentSession {
 
   /** Drive the initial run's turn loop; emits `completed` on success. */
   async runTurnLoop(prompt: string, opts: TurnLoopOptions): Promise<TurnLoopResult> {
-    const session = this._session;
     this.turnLimits = {
       maxTurns: normalizeMaxTurns(opts.maxTurns ?? this.meta.agentMaxTurns ?? opts.defaultMaxTurns),
       wrapUpTurns: opts.wrapUpTurns ?? DEFAULT_WRAP_UP_TURNS,
     };
     const tracker = new TurnBudgetTracker(this.turnLimits);
-    const unsubTurns = this.enforceTurnBudget(tracker, opts.onTurnBudget);
-    const collector = collectResponseText(session);
-    const cleanupAbort = forwardAbortSignal(session, opts.signal);
 
     // Prepend parent context if it was captured at spawn time.
     const effectivePrompt = this.meta.parentContext
       ? this.meta.parentContext + prompt
       : prompt;
 
+    const responseText = await this.promptForAnswer(effectivePrompt, tracker, opts);
+    this.meta.lifecycle.completed({
+      sessionDir: this.meta.sessionDir,
+      agentName: this.meta.agentName,
+      turnBudget: tracker.budget,
+    });
+    return { responseText, turnBudget: tracker.budget };
+  }
+
+  /**
+   * Prompt the session for one run's answer, held to the tracker's budget.
+   *
+   * A signal that already fired takes no turn and has no answer. Forwarding it
+   * would not stop the prompt: Pi's `abort()` is a no-op while no run is active,
+   * so it cannot cancel a prompt started after it. Nor does the history answer
+   * for it — on a resume, the last assistant text is the previous run's.
+   */
+  private async promptForAnswer(
+    prompt: string,
+    tracker: TurnBudgetTracker,
+    opts: ResumeTurnLoopOptions,
+  ): Promise<string> {
+    if (opts.signal?.aborted) return "";
+    const session = this._session;
+    const unsubTurns = this.enforceTurnBudget(tracker, opts.onTurnBudget);
+    const collector = collectResponseText(session);
+    const cleanupAbort = forwardAbortSignal(session, opts.signal);
+
     try {
-      await session.prompt(effectivePrompt);
+      await session.prompt(prompt);
       failIfProviderErrored(this.turnFailure.getFailure());
-      this.meta.lifecycle.completed({
-        sessionDir: this.meta.sessionDir,
-        agentName: this.meta.agentName,
-        turnBudget: tracker.budget,
-      });
     } finally {
       unsubTurns();
       collector.unsubscribe();
       cleanupAbort();
     }
 
-    const responseText = collector.getText().trim() || getLastAssistantText(session);
-    return { responseText, turnBudget: tracker.budget };
+    return collector.getText().trim() || getLastAssistantText(session);
   }
 
   /**
@@ -214,22 +232,8 @@ export class SubagentSession {
    * parent asked for more work, and an exhausted run's remainder would be none.
    */
   async resumeTurnLoop(prompt: string, opts: ResumeTurnLoopOptions): Promise<TurnLoopResult> {
-    const session = this._session;
     const tracker = new TurnBudgetTracker(this.turnLimits);
-    const unsubTurns = this.enforceTurnBudget(tracker, opts.onTurnBudget);
-    const collector = collectResponseText(session);
-    const cleanupAbort = forwardAbortSignal(session, opts.signal);
-
-    try {
-      await session.prompt(prompt);
-      failIfProviderErrored(this.turnFailure.getFailure());
-    } finally {
-      unsubTurns();
-      collector.unsubscribe();
-      cleanupAbort();
-    }
-
-    const responseText = collector.getText().trim() || getLastAssistantText(session);
+    const responseText = await this.promptForAnswer(prompt, tracker, opts);
     return { responseText, turnBudget: tracker.budget };
   }
 

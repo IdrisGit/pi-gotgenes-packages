@@ -723,6 +723,67 @@ describe("SubagentSession — resumeTurnLoop turn budget", () => {
   });
 });
 
+// Pi's AgentSession.abort() is a no-op with no run active, so aborting before
+// prompt() would not stop it: a loop whose signal already fired must not prompt.
+describe("SubagentSession — a turn loop whose signal already fired", () => {
+  function firedSignal(): AbortSignal {
+    const controller = new AbortController();
+    controller.abort();
+    return controller.signal;
+  }
+
+  describe("runTurnLoop", () => {
+    it("takes no turn and returns no text", async () => {
+      const { session } = createSession("full answer");
+      const { sub } = makeSubagentSession(session);
+      const result = await sub.runTurnLoop("go", { signal: firedSignal() });
+      expect(session.prompt).not.toHaveBeenCalled();
+      expect(result).toEqual({ responseText: "", turnBudget: { used: 0, phase: "within" } });
+    });
+
+    it("still emits completed, as a run aborted mid-prompt does", async () => {
+      const { session } = createSession("full answer");
+      const { sub } = makeSubagentSession(session, { sessionDir: "/d", agentName: "Explore", lifecycle });
+      await sub.runTurnLoop("go", { signal: firedSignal() });
+      expect(lifecycle.completed).toHaveBeenCalledExactlyOnceWith(
+        childCompletedEvent({ sessionDir: "/d", agentName: "Explore", turnBudget: { used: 0, phase: "within" } }),
+      );
+    });
+
+    it("sends no budget warning when every turn is a wrap-up turn", async () => {
+      const { session } = createSession("full answer");
+      const { sub } = makeSubagentSession(session);
+      await sub.runTurnLoop("go", { maxTurns: 2, wrapUpTurns: 2, signal: firedSignal() });
+      expect(session.sendCustomMessage).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("resumeTurnLoop", () => {
+    it("takes no turn and does not report the previous run's answer", async () => {
+      const { session } = createSession("full answer");
+      session.messages.push({
+        role: "assistant",
+        content: [{ type: "text", text: "the previous run's answer" }],
+        stopReason: "stop",
+      });
+      const { sub } = makeSubagentSession(session);
+      const result = await sub.resumeTurnLoop("Continue", { signal: firedSignal() });
+      expect(session.prompt).not.toHaveBeenCalled();
+      expect(result).toEqual({ responseText: "", turnBudget: { used: 0, phase: "within" } });
+    });
+
+    it("resolves even when the previous run's last turn failed", async () => {
+      const { session } = createSession("full answer");
+      session.messages.push(providerErrorMessage("401 invalid api key"));
+      const { sub } = makeSubagentSession(session);
+      await expect(sub.resumeTurnLoop("Continue", { signal: firedSignal() })).resolves.toEqual({
+        responseText: "",
+        turnBudget: { used: 0, phase: "within" },
+      });
+    });
+  });
+});
+
 describe("SubagentSession — steer", () => {
   it("delegates the message to the live session", async () => {
     const { session } = createSession("X");
