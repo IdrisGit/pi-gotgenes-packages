@@ -1697,6 +1697,25 @@ describe("BashProgram", () => {
         await expect(exemptions("grep foo")).resolves.toEqual([undefined]);
       });
 
+      describe("an env naming no command", () => {
+        it("exempts the env unit of a pipeline", async () => {
+          await expect(exemptions("env | rg '^PI_'")).resolves.toEqual([
+            "no-command",
+            undefined,
+          ]);
+        });
+
+        it("exempts it whose statement redirects to a file", async () => {
+          await expect(exemptions("env > /tmp/x")).resolves.toEqual([
+            "no-command",
+          ]);
+        });
+
+        it("does not exempt a computed option value", async () => {
+          await expect(exemptions("env -u $X")).resolves.toEqual([undefined]);
+        });
+      });
+
       describe("a statement that writes through a redirect", () => {
         it("withholds the exemption from the redirected wrapper", async () => {
           await expect(exemptions("xargs grep foo > out.txt")).resolves.toEqual(

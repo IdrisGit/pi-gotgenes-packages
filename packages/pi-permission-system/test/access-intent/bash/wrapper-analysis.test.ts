@@ -893,6 +893,56 @@ describe("floorExemptionOf", () => {
     });
   });
 
+  describe("a wrapper naming no command", () => {
+    it.each([
+      ["env", "env alone prints the environment"],
+      ["env -0", "a flag"],
+      ["env -i", "a cleared environment"],
+      ["env -v", "a flag"],
+      ["env -u FOO", "-u takes a name"],
+      ["env -uFOO", "an attached -u value"],
+      ["env --unset=FOO", "an attached --unset value"],
+      ["env -", "a lone dash ends the options"],
+      ["env FOO=1", "an assignment"],
+      ["env -i FOO=1", "a flag, then an assignment"],
+      ["env -- FOO=1", "the end of options, then an assignment"],
+      ["env --help", "a long flag"],
+      ["env --block-signal", "an optional argument takes no word"],
+    ])("runs nothing: %s (%s)", (unit) => {
+      expect(exemptionOf(unit)).toBe("no-command");
+    });
+
+    it("needs no redirect refusal, since it classifies no read", () => {
+      expect(exemptionOf("env", true)).toBe("no-command");
+    });
+
+    describe("keeps the floor", () => {
+      it.each([
+        ["env -u $X", 'X="FOO rm" runs rm'],
+        ["env FOO=$X", 'X="1 rm" runs rm'],
+        ['env FOO="$X"', "a nameref to an array splits the quoted word"],
+        ["env $X", "a computed word names the command"],
+        ['env "$X"', "a computed word names the command"],
+        ["env 'FOO=1'", "a quoted assignment reads as the command"],
+        ["env -S 'rm x'", "-S splits its value into the command"],
+        ["env -C /tmp", "-C is refused"],
+        ["env -P /bin", "-P is refused"],
+        ["env -a x", "-a is refused"],
+        ["env --env0-from /dev/null", "--env0-from is refused"],
+        ["env -Z", "an unlisted option refuses"],
+        ["env -u", "-u runs out of words"],
+        ["xargs", "bare xargs runs echo"],
+        ["sudo -l", "sudo's bare forms are not audited as running nothing"],
+        ["doas -L", "doas's bare forms are not audited as running nothing"],
+        ["sudo env", "only the outermost layer is read"],
+        ["time env", "only the outermost layer is read"],
+        ["nohup env", "only the outermost layer is read"],
+      ])("for %s (%s)", (unit) => {
+        expect(exemptionOf(unit)).toBeUndefined();
+      });
+    });
+  });
+
   describe("a wrapper whose command line the peel does not see", () => {
     it.each([
       ["watch cat x", "watch hands its command line to sh -c"],

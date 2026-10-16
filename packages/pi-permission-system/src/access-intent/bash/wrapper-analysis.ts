@@ -183,12 +183,20 @@ export function executedUnitOf(
  * inner command runs, so the unit resolves by that command's own rule whatever
  * it does (see {@link onlyModifiesExecution}). The first three conditions
  * above hold for it too; the core-reader reason is preferred when both apply.
+ *
+ * `"no-command"`: the unit's own wrapper names no command, and its bare form
+ * runs nothing (see {@link namesNoCommand}), so there is no command to hide and
+ * the unit resolves by its own rule. It reads the outermost layer only, and it
+ * carries no redirect refusal: like the execution-modifier reason it classifies
+ * nothing, so `env > /tmp/x` is decided as `printenv > /tmp/x` is. It cannot
+ * collide with the other two, which both need an inner command.
  */
 export function floorExemptionOf(
   words: readonly CommandWord[],
   statement: { readonly writesViaRedirect: boolean },
 ): FloorExemption | undefined {
   if (classifyWrapperWords(words) !== "indirection") return undefined;
+  if (namesNoCommand(words)) return "no-command";
 
   // Only the peeled words matter here, so the walk is handed no source span to
   // cut from — the text slice is `executedUnitOf`'s product, not this one's.
@@ -209,6 +217,30 @@ export function floorExemptionOf(
   return onlyModifiesExecution(unwrapped.peeled, unwrapped.words)
     ? "execution-modifier"
     : undefined;
+}
+
+/**
+ * True when a wrapper unit names no command and its wrapper runs nothing so.
+ *
+ * Three things must hold, and each is a way a command could still run:
+ *
+ * 1. The wrapper's grammar says its bare form runs nothing
+ *    ({@link GetoptGrammar.bareFormRunsNothing}): bare `xargs` runs `echo`.
+ * 2. The option walk ends exactly on the last word, so every word was an
+ *    option, a value, or an assignment. A refused option is a mode the walk
+ *    cannot vouch for, and a value-taking option that runs out of words ends
+ *    past the end.
+ * 3. Every word after the wrapper name is literal: `env -u $X` with
+ *    `X="FOO rm"` runs `rm`, which is {@link carriesComputedWord}'s rule.
+ */
+function namesNoCommand(words: readonly CommandWord[]): boolean {
+  const name = wrapperName(words);
+  const grammar = name === undefined ? undefined : GETOPT_GRAMMARS.get(name);
+  return (
+    grammar?.bareFormRunsNothing === true &&
+    getoptWalkEnd(words, grammar) === words.length &&
+    !carriesComputedWord(words)
+  );
 }
 
 /** True when a peeled layer's wrapper does not run the words the peel sees. */
@@ -822,6 +854,12 @@ interface GetoptGrammar {
    * nothing.
    */
   readonly loneDashEndsOptions: boolean;
+  /**
+   * Whether the wrapper given no command runs nothing, as `env` (which prints
+   * the environment) does. Set only where that is verified: bare `xargs` runs
+   * `echo`, so a wrapper whose bare form invokes anything must leave it unset.
+   */
+  readonly bareFormRunsNothing: boolean;
 }
 
 /**
@@ -897,6 +935,7 @@ const SUDO_GRAMMAR: GetoptGrammar = {
   ]),
   assignments: true,
   loneDashEndsOptions: false,
+  bareFormRunsNothing: false,
 };
 
 /**
@@ -914,6 +953,9 @@ const SUDO_GRAMMAR: GetoptGrammar = {
  *
  * A lone `-` clears the environment and, as GNU reads it, ends the options;
  * BSD keeps parsing after it, so ending there only ever names less.
+ *
+ * Given no command, `env` prints the environment and runs nothing, on BSD and
+ * GNU alike; that is its bare form.
  */
 const ENV_GRAMMAR: GetoptGrammar = {
   short: new Map<string, OptionArity>([
@@ -944,6 +986,7 @@ const ENV_GRAMMAR: GetoptGrammar = {
   ]),
   assignments: true,
   loneDashEndsOptions: true,
+  bareFormRunsNothing: true,
 };
 
 /**
@@ -1004,6 +1047,7 @@ const XARGS_GRAMMAR: GetoptGrammar = {
   ]),
   assignments: false,
   loneDashEndsOptions: false,
+  bareFormRunsNothing: false,
 };
 
 /**
@@ -1026,6 +1070,7 @@ const DOAS_GRAMMAR: GetoptGrammar = {
   long: new Map<string, OptionArity>(),
   assignments: false,
   loneDashEndsOptions: false,
+  bareFormRunsNothing: false,
 };
 
 /** Wrappers whose inner command is located by a getopt grammar. */
