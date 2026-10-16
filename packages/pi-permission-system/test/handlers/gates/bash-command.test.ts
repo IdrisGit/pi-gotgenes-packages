@@ -1299,6 +1299,7 @@ describe("resolveBashCommandCheck: env, xargs, and doas option grammars", () => 
         "GNU --max-lines takes no following word, so rm runs",
       ],
       ["env -P cat rm x", "rm runs, searched for in cat"],
+      ["env --unset rm cat x", "BSD env reads -u nset, so rm runs"],
       ["env -Srm cat", "-S splits rm into the command"],
       ["env -C /etc cat shadow", "cat reads /etc/shadow, not ./shadow"],
       ["env --chdir /etc cat shadow", "cat reads /etc/shadow, not ./shadow"],
@@ -1399,6 +1400,7 @@ describe("resolveBashCommandCheck: an env naming no command", () => {
       ['env "$X"', "a computed word names the command"],
       ["env -u $X", 'X="FOO rm" runs rm'],
       ["env -S 'rm x'", "-S splits its value into the command"],
+      ["env --unset sh", "BSD env reads -u nset, so sh runs"],
       ["sudo env", "only the outermost layer is read"],
     ])("for %s (%s)", (command) => {
       const result = decide(permissive, command);

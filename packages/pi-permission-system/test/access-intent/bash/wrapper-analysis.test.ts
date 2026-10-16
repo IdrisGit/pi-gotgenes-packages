@@ -362,7 +362,7 @@ describe("executedUnitOf", () => {
   describe("an env layer", () => {
     it.each([
       ["env -iu FOO cat rm x", "cat rm x"],
-      ["env --un FOO cat x", "cat x"],
+      ["env --unset=FOO cat x", "cat x"],
       ["env - cat x", "cat x"],
       ["env - FOO=1 cat x", "cat x"],
     ])(
@@ -376,6 +376,7 @@ describe("executedUnitOf", () => {
       ["env -C /etc cat shadow", "-C moves where operands resolve"],
       ["env -Srm cat", "-S builds the command at run time"],
       ["env - -i cat x", "a lone dash ends the options"],
+      ["env --un FOO cat x", "BSD reads -u n, so FOO runs"],
     ])("returns null for %s (%s)", (unit) => {
       expect(executedUnit(unit)).toBeNull();
     });
@@ -841,6 +842,10 @@ describe("floorExemptionOf", () => {
         ["env -a cat rm x", "-a sets the argv0 a multi-call binary reads"],
         ["env --argv0 cat rm x", "--argv0 sets argv0"],
         ["env --a cat rm x", "an abbreviation of --argv0"],
+        ["env --unset sh cat x", "BSD reads -u nset, so sh runs"],
+        ["env --un sh cat x", "BSD reads -u n, so sh runs"],
+        ["env -i --unset sh cat x", "BSD reads -u nset after -i"],
+        ["env --unset cat x", "GNU unsets cat and runs x"],
         ["env -a rm cat x", "argv0 rm makes a multi-call cat run rm"],
         ["env --argv0 rm cat x", "argv0 rm makes a multi-call cat run rm"],
         [
@@ -869,8 +874,8 @@ describe("floorExemptionOf", () => {
       ["env -i cat x", "-i clears the environment"],
       ["env -u FOO cat x", "-u takes a name"],
       ["env -uFOO cat x", "an attached -u value"],
-      ["env --unset FOO cat x", "--unset takes a name"],
-      ["env --un FOO cat x", "an abbreviation of --unset"],
+      ["env --unset=FOO cat x", "an attached --unset value"],
+      ["env --un=FOO cat x", "an attached abbreviation of --unset"],
       ["env -iu FOO cat rm x", "the cluster's -u takes FOO"],
       ["env FOO=1 cat x", "env passes an assignment to the command"],
       ["env -i HOME=/h cat x", "a flag, then an assignment"],
@@ -931,6 +936,11 @@ describe("floorExemptionOf", () => {
         ["env --env0-from /dev/null", "--env0-from is refused"],
         ["env -Z", "an unlisted option refuses"],
         ["env -u", "-u runs out of words"],
+        ["env --unset FOO", "BSD reads -u nset, so FOO runs"],
+        ["env --un FOO", "BSD reads -u n, so FOO runs"],
+        ["env --uns FOO", "BSD reads -u ns, so FOO runs"],
+        ["env -i --unset sh", "BSD reads -u nset after -i"],
+        ["env --unset sh x=1", "BSD runs sh with the argument x=1"],
         ["xargs", "bare xargs runs echo"],
         ["sudo -l", "sudo's bare forms are not audited as running nothing"],
         ["doas -L", "doas's bare forms are not audited as running nothing"],

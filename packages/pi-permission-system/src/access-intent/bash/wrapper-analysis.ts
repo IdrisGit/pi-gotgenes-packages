@@ -642,7 +642,9 @@ function shortClusterWords(
 ): number | undefined {
   for (let position = 0; position < letters.length; position++) {
     const arity = table.get(letters[position]);
-    if (arity === undefined || arity === "refuse") return undefined;
+    if (arity === undefined || arity === "refuse" || arity === "attached") {
+      return undefined;
+    }
     if (arity === "optional") return 1;
     if (arity === "value") return position + 1 < letters.length ? 1 : 2;
   }
@@ -662,6 +664,7 @@ function longOptionWords(
   const name = equals === -1 ? body : body.slice(0, equals);
   const arity = resolveLongOption(name, table);
   if (arity === undefined || arity === "refuse") return undefined;
+  if (arity === "attached" && equals === -1) return undefined;
   return arity === "value" && equals === -1 ? 2 : 1;
 }
 
@@ -830,10 +833,13 @@ const EMPTY_FLAGS: ReadonlySet<string> = new Set<string>();
 /**
  * How a getopt-parsed wrapper treats one of its options: a flag, an option
  * taking a value, an option whose value is optional and so only ever attached
- * (getopt's `::`), or a mode in which the command the peel would name is not
- * the one that runs, which refuses the peel.
+ * (getopt's `::`), a long option whose value is admitted only attached
+ * (`--unset=FOO`) because another implementation reads the detached form as a
+ * different command line, or a mode in which the command the peel would name
+ * is not the one that runs, which refuses the peel. A short-option table never
+ * holds `"attached"`; a cluster reads it as a refusal.
  */
-type OptionArity = "flag" | "value" | "optional" | "refuse";
+type OptionArity = "flag" | "value" | "optional" | "attached" | "refuse";
 
 /**
  * A wrapper's options as getopt_long reads them, keyed by short letter and by
@@ -943,6 +949,13 @@ const SUDO_GRAMMAR: GetoptGrammar = {
  * options) and GNU coreutils 9.12 (`env --help`). No letter has different
  * arities on the two.
  *
+ * BSD reads a long option as a cluster after its `-` option, and the two
+ * readings part only at `--unset`: BSD takes `--unset FOO cat` as `-`, then
+ * `-u nset`, and runs `FOO`, where GNU unsets `FOO` and runs `cat`. So
+ * `--unset` and its abbreviations admit a value only attached
+ * (`--unset=FOO`), which neither reads as a command. Every other long option
+ * either refuses here or is a usage error on BSD, which runs nothing.
+ *
  * Each refusing option is one where the command the peel would name is not
  * what runs as named: `-C`/`--chdir` move where its relative operands
  * resolve, so the path surfaces would judge the wrong file; `-S`/
@@ -955,7 +968,7 @@ const SUDO_GRAMMAR: GetoptGrammar = {
  * BSD keeps parsing after it, so ending there only ever names less.
  *
  * Given no command, `env` prints the environment and runs nothing, on BSD and
- * GNU alike; that is its bare form.
+ * GNU alike; that is its bare form, read by this same grammar.
  */
 const ENV_GRAMMAR: GetoptGrammar = {
   short: new Map<string, OptionArity>([
@@ -975,7 +988,7 @@ const ENV_GRAMMAR: GetoptGrammar = {
     ["list-signal-handling", "flag"],
     ["null", "flag"],
     ["version", "flag"],
-    ["unset", "value"],
+    ["unset", "attached"],
     ["block-signal", "optional"],
     ["default-signal", "optional"],
     ["ignore-signal", "optional"],
