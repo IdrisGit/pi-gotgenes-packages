@@ -55,7 +55,7 @@ export function proveDeclaredEffect(
   const { scope, entry } = declared[headWord];
   const reached = descend(entry, argWords);
   if (reached?.entry.effects === undefined) return UNPROVEN_ATTRIBUTION;
-  if (stemGuard(reached.guards)(argWords)) {
+  if (reached.guards.length > 0 && stemGuard(reached.guards)(argWords)) {
     return { kind: "effect", effect: RETRACTED_EFFECT };
   }
   return attributionOf(reached.entry.effects, DECLARED_SOURCES[scope]);

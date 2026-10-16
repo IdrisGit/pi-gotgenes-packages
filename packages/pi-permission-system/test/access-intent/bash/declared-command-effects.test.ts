@@ -252,6 +252,14 @@ describe("proveDeclaredEffect", () => {
       ).toEqual(RETRACTED);
     });
 
+    it("keeps an unguarded declaration with a computed word that may lead with a dash", () => {
+      expect(
+        proveDeclaredEffect(declare({ tool: { effects: "read" } }), "tool", [
+          computedArgWord("$(cat ~/a)", true),
+        ]),
+      ).toEqual(DECLARED_READ);
+    });
+
     it("applies a parent's guard under the subcommand it reached", () => {
       expect(
         proveDeclaredEffect(

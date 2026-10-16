@@ -1,3 +1,4 @@
+import type { DeclaredCommandEffects } from "#src/config/command-effects-config";
 import type { PathNormalizer } from "#src/path/path-normalizer";
 import {
   type BashExternalPath,
@@ -23,6 +24,11 @@ export interface BashParseOptions {
    * effective base as if the command were prefixed with `cd <workdir>`.
    */
   readonly workdir?: string;
+  /**
+   * The user's `commandEffects` declarations, consulted for a command the
+   * pure-reader core proves nothing about. Absent means none.
+   */
+  readonly commandEffects?: DeclaredCommandEffects;
 }
 
 /**
@@ -103,10 +109,12 @@ export class BashProgram {
           ShellVariables.scan([tree.rootNode, ...salvaged]),
         );
         const { externalAccesses, ruleCandidates, argumentSpellings } =
-          new BashPathResolver(normalizer, words, options?.workdir).resolve(
-            tree.rootNode,
-            salvaged,
-          );
+          new BashPathResolver(
+            normalizer,
+            words,
+            options?.workdir,
+            options?.commandEffects,
+          ).resolve(tree.rootNode, salvaged);
         return new BashProgram(
           command,
           [

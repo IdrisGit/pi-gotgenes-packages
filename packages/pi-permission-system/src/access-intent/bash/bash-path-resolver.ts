@@ -5,6 +5,10 @@ import {
   UNPROVEN_EFFECT,
 } from "#src/access-intent/effect";
 import { normalizePathPolicyLiteral } from "#src/access-intent/path-normalization";
+import {
+  type DeclaredCommandEffects,
+  NO_DECLARED_COMMAND_EFFECTS,
+} from "#src/config/command-effects-config";
 import type { PathNormalizer } from "#src/path/path-normalizer";
 import { isSafeSystemPath } from "#src/path/safe-system-paths";
 import type { ArgumentSpeller } from "./command-enumeration";
@@ -134,6 +138,7 @@ export class BashPathResolver {
     private readonly normalizer: PathNormalizer,
     private readonly words: WordReader,
     private readonly workdir?: string,
+    private readonly declared: DeclaredCommandEffects = NO_DECLARED_COMMAND_EFFECTS,
   ) {}
 
   /**
@@ -271,7 +276,11 @@ export class BashPathResolver {
         if (timed !== null) {
           return this.walkTimedSubshell(node, timed, base, out);
         }
-        tagTokens(collectCommandTokens(node, this.words), base, out);
+        tagTokens(
+          collectCommandTokens(node, this.words, this.declared),
+          base,
+          out,
+        );
         return this.foldCd(node, base);
       }
       case "pipeline":
@@ -297,7 +306,11 @@ export class BashPathResolver {
         // substitution interiors: collect every candidate in the subtree tagged
         // with the enclosing base and do not fold their internal `cd`s. (Folding
         // inside substitutions is deferred — conservative, never under-flags.)
-        tagTokens(collectPathCandidateTokens(node, this.words), base, out);
+        tagTokens(
+          collectPathCandidateTokens(node, this.words, this.declared),
+          base,
+          out,
+        );
         return base;
     }
   }
@@ -320,7 +333,11 @@ export class BashPathResolver {
       const child = command.child(i);
       if (!child?.isNamed || child.type === "command_name") continue;
       if (child.startIndex === subshell.startIndex) continue;
-      tagTokens(collectPathCandidateTokens(child, this.words), base, out);
+      tagTokens(
+        collectPathCandidateTokens(child, this.words, this.declared),
+        base,
+        out,
+      );
     }
     this.walkForCandidates(subshell, base, out);
     return base;
@@ -381,7 +398,11 @@ export class BashPathResolver {
       }
       // Downstream stage (after a `|`): subshell — collect against the folded
       // base, do not fold.
-      tagTokens(collectPathCandidateTokens(child, this.words), current, out);
+      tagTokens(
+        collectPathCandidateTokens(child, this.words, this.declared),
+        current,
+        out,
+      );
     }
     return current;
   }
@@ -411,7 +432,11 @@ export class BashPathResolver {
         if (child.type === "file_redirect") {
           // Redirect destinations are part of the piped stage; collect them
           // against the folded base without folding.
-          tagTokens(collectRedirectTokens(child, this.words), current, out);
+          tagTokens(
+            collectRedirectTokens(child, this.words, this.declared),
+            current,
+            out,
+          );
           continue;
         }
         // The inner statement is the `list`/`command` being redirected; fold its
@@ -421,7 +446,11 @@ export class BashPathResolver {
       return current;
     }
     // Bare `command` or any other shape: a true subshell first stage.
-    tagTokens(collectPathCandidateTokens(node, this.words), base, out);
+    tagTokens(
+      collectPathCandidateTokens(node, this.words, this.declared),
+      base,
+      out,
+    );
     return base;
   }
 
@@ -449,7 +478,11 @@ export class BashPathResolver {
         current = this.walkForCandidates(child, current, out);
       } else {
         // Terminal child = the real pipe stage; collect without folding.
-        tagTokens(collectPathCandidateTokens(child, this.words), current, out);
+        tagTokens(
+          collectPathCandidateTokens(child, this.words, this.declared),
+          current,
+          out,
+        );
       }
     }
     return current;
