@@ -96,9 +96,8 @@ describe("Subagent — constructor", () => {
 		expect(record.description).toBe("Find stale TODOs");
 	});
 
-	it("starts with a fresh abort controller and zeroed stats", () => {
+	it("starts with zeroed stats", () => {
 		const record = makeSubagent();
-		expect(record.abortController).toBeInstanceOf(AbortController);
 		// Stats always start at zero — set via mutation methods after construction
 		expect(record.toolUses).toBe(0);
 		expect(record.compactionCount).toBe(0);
@@ -113,12 +112,6 @@ describe("Subagent — constructor", () => {
 		expect(record.completedAt).toBeUndefined();
 		expect(record.promise).toBeUndefined();
 		expect(record.subagentSession).toBeUndefined();
-	});
-
-	it("always creates its own AbortController", () => {
-		const record = makeSubagent();
-		expect(record.abortController).toBeInstanceOf(AbortController);
-		expect(record.abortController.signal.aborted).toBe(false);
 	});
 
 	it("toolCallId reflects execution.parentSession.toolCallId", () => {
@@ -374,7 +367,7 @@ describe("Subagent — abort", () => {
 		expect(record.status).toBe("stopped");
 	});
 
-	it("marks stopped and returns true even without an AbortController", () => {
+	it("marks stopped and returns true for a running record with no run to signal", () => {
 		const record = makeSubagent({ status: "running" });
 		expect(record.abort()).toBe(true);
 		expect(record.status).toBe("stopped");

@@ -382,7 +382,7 @@ src/
 │   ├── turn-limits.ts              turn-budget policy: TurnBudget, the TurnBudgetTracker that decides warnings and stops, normalizeMaxTurns (minimum 2)
 │   ├── subagent.ts                 owns full execution lifecycle (run, resume, abort, steer, wait-until-settled); a teardown with no result text to carry its addendum records it as a notice and announces one produced after delivery; answers why a resume would be refused (resumeRefusal, including a live run), which the resume choke point and every result carrier read rather than re-deriving; reports a resume's start as well as its end; wait-until-settled reports whether the waited run settled, has not, or was replaced by a resume (carrying what it ended with)
 │   ├── subagent-state.ts           lifecycle status + metrics + result-delivery value object (transitions, accumulators, classification predicates); delivery carries a revocable claim per carrier (each releases only its own handle), a one-way consumption latch, and a per-run update ledger that renders only what no announcement delivered; numbers its runs and keeps the outcome of the run the latest resume replaced
-│   ├── run-listeners.ts            per-run observer-unsub and signal-detach handles
+│   ├── subagent-run.ts             one run of a subagent: its own abort lever, caller-signal wiring, and record-observer unsubscribe
 │   ├── record-observer.ts          session-event stats observer; stamps each event as the run's last progress
 │   ├── workspace-bracket.ts        child workspace prepare/dispose lifecycle; idempotent dispose, reports a torn-down workspace
 │   ├── concurrency-limiter.ts       background admission gate: schedules run thunks FIFO against the limit
