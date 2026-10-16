@@ -1,5 +1,5 @@
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AgentTypeRegistry } from "#src/config/agent-types";
 import { AgentTool } from "#src/tools/agent-tool";
 import {
@@ -379,6 +379,70 @@ describe("AgentTool — resume path", () => {
 				resume: "agent-1",
 			});
 			expect(textOf(result)).toContain("Agent ID: agent-1");
+		});
+	});
+
+	describe("inline progress of a foreground resume", () => {
+		const foregroundResume = {
+			prompt: "continue",
+			description: "resume",
+			subagent_type: "general-purpose",
+			resume: "agent-1",
+		};
+
+		beforeEach(() => {
+			vi.useFakeTimers();
+		});
+
+		afterEach(() => {
+			vi.useRealTimers();
+		});
+
+		/** Start a foreground resume whose run stays in flight until `finish` is called. */
+		function startPendingResume() {
+			const deps = createToolDeps();
+			const record = mockResumeStart(deps, { status: "running", completedAt: undefined, toolUses: 5 });
+			const run = Promise.withResolvers<void>(); // eslint-disable-line @typescript-eslint/no-invalid-void-type -- Promise.withResolvers<void> is valid; rule does not allow void in generic fn call type args
+			vi.spyOn(record, "promise", "get").mockReturnValue(run.promise);
+			const onUpdate = vi.fn();
+			const pending = makeTool(deps).execute("tc-1", foregroundResume, new AbortController().signal, onUpdate, makeCtx());
+			return { onUpdate, pending, finish: () => run.resolve() };
+		}
+
+		it("streams the resumed record's progress while its run is in flight", async () => {
+			const { onUpdate, pending, finish } = startPendingResume();
+
+			await vi.advanceTimersByTimeAsync(80);
+
+			// Partial match: the streamed details also carry the call's presentation and a spinner frame.
+			expect(onUpdate).toHaveBeenLastCalledWith({
+				content: [{ type: "text", text: "5 tool uses..." }],
+				details: expect.objectContaining({ status: "running", toolUses: 5, durationMs: 80 }),
+			});
+			finish();
+			await pending;
+		});
+
+		it("stops streaming once the resumed run returns", async () => {
+			const { onUpdate, pending, finish } = startPendingResume();
+			finish();
+			await pending;
+
+			onUpdate.mockClear();
+			await vi.advanceTimersByTimeAsync(400);
+
+			expect(onUpdate).not.toHaveBeenCalled();
+		});
+
+		it("streams nothing for a resume that was refused", async () => {
+			const deps = createToolDeps();
+			mockResumeRefusal(deps, "still-running");
+			const onUpdate = vi.fn();
+
+			await makeTool(deps).execute("tc-1", foregroundResume, new AbortController().signal, onUpdate, makeCtx());
+			await vi.advanceTimersByTimeAsync(400);
+
+			expect(onUpdate).not.toHaveBeenCalled();
 		});
 	});
 

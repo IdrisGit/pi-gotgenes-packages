@@ -18,6 +18,7 @@ import {
 import { renderBackgroundLaunch, spawnBackground } from "#src/tools/background-spawner";
 import { runForeground } from "#src/tools/foreground-runner";
 import { buildAgentGuidelines, buildDetails, buildTypeListText, textResult } from "#src/tools/helpers";
+import { startProgressStream } from "#src/tools/progress-stream";
 import { renderAgentResult } from "#src/tools/result-renderer";
 import {
 	type ModelInfo,
@@ -104,7 +105,7 @@ export class AgentTool {
 			if (params.run_in_background === true) {
 				return this.resumeInBackground(id, prompt, config);
 			}
-			return this.resumeExisting(id, prompt, signal, config.presentation.detailBase);
+			return this.resumeExisting(id, prompt, signal, onUpdate, config.presentation.detailBase);
 		}
 
 		// ---- Background execution ----
@@ -126,12 +127,14 @@ export class AgentTool {
 
 	/**
 	 * Continue an existing agent's session with a new prompt, returning its
-	 * resumed outcome directly to the parent.
+	 * resumed outcome directly to the parent. The resumed run is in the
+	 * foreground, so it streams its progress inline as a foreground spawn does.
 	 */
 	private async resumeExisting(
 		id: string,
 		prompt: string,
 		signal: AbortSignal | undefined,
+		onUpdate: ((update: AgentToolResult<AgentDetails>) => void) | undefined,
 		detailBase: SpawnPresentation["detailBase"],
 	) {
 		// The manager owns whether a resume happens; this door owns only how the
@@ -146,7 +149,10 @@ export class AgentTool {
 			return textResult(resumeRefusalMessage(start.reason, id));
 		}
 		const record = start.record;
+		// No finally: the record's promise always resolves, whatever the run ends in.
+		const stopStream = startProgressStream({ detailBase, onUpdate, getRecord: () => record });
 		await record.promise;
+		stopStream();
 		// Resume-return delivery edge: the resumed outcome is returned directly.
 		record.markConsumed();
 		return textResult(
