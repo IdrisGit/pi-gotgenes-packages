@@ -35,3 +35,22 @@ Plan: `packages/pi-subagents/docs/plans/1012-run-owns-its-mode.md`.
 #### Deferred tidyings
 
 - `src/tools/agent-tool.ts` `resumeExisting`: the `signal ?? new AbortController().signal` fallback, unrelated to the mode change.
+
+## Stage: Implementation — TDD (2026-10-16T15:49:39Z)
+
+### Session summary
+
+All eight plan steps landed, each with its named killing mutations applied and observed red, plus four follow-up commits from the pre-completion review.
+`SubagentRun` now carries its mode, `isBackground` reports the current run's mode (the breaking `fix(pi-subagents)!:`), a foreground resume streams inline progress through the extracted `startProgressStream`, and a resumed run's finished widget row lingers.
+The pi-subagents suite went from 2142 to 2163 tests (+21).
+
+### Observations
+
+- Deviation, step 4: `Subagent.resume`'s options parameter took a temporary `= {}` default so only the three signal-passing calls changed; step 6 removed it when `background` became required, so the 34 no-signal calls were edited once rather than twice.
+- Deviation, step 6: the 78 typed call sites `tsc` reported were edited by a line-targeted script (calls with `claimOutcome: true` got `background: false`, the rest `background: true`); the untyped exact assertions in `agent-tool.test.ts` and `service-adapter.test.ts` surfaced only in the full-suite run, as the plan predicted.
+- Deviation, step 7: I first dropped the plan's `finally` on the claim that `Subagent.promise` always resolves; the reviewer traced a narrow residual (an observer subscription or observer throw outside `runOnSession`'s try) and the `finally` was restored in a follow-up `refactor:` commit to match `runForeground`.
+  The reject-path mutation stays unwritten, since no reachable input rejects today.
+- The plan's Module-Level Changes missed the `package-pi-subagents` skill's domain table; its file count (stale at 72 before this change, 73 measured) and the Tools row now read 74 and 11.
+- The Tidy-First assessor's signal-call count (1) was wrong; there were 3, as the planning note warned.
+- Every step-6 mutation killed its predicted set, and the fallback mutation (`?? true`) also killed the widget's background-only filtering tests, which build passive records.
+- Pre-completion reviewer: WARN (round 1: a garbled widget doc comment, the dropped `finally`, a stale `fix:` commit type in the roadmap), WARN (round 2: the "whatever mode it was spawned in" wording in two places), then PASS (round 3).
