@@ -827,6 +827,8 @@ An externally launched sandbox remains the supported containment route (unverifi
    Carries the breaking-change footer.
 5. **Blame threading.**
    Verdict blame into prompts and session-approval suggestions.
+   Path blame landed ([#881]): a bash path ask's prompt and review entries name the deciding path, its effect, and its source.
+   Unit blame (a wrapper floor naming the subtree that forced it) and blame-targeted session-approval suggestions remain.
 6. **The sandbox seam.**
    `getPolicyScope()`, then [#802]'s launcher, then the enforced-scope declaration under §8's constraints.
 7. **Structured bash rules** ([#804]).
@@ -876,4 +878,5 @@ Issue [#620] carries the judgment slice the chain retains under §7.
 [#1064]: https://github.com/gotgenes/pi-packages/issues/1064
 [#797]: https://github.com/gotgenes/pi-packages/issues/797
 [#880]: https://github.com/gotgenes/pi-packages/issues/880
+[#881]: https://github.com/gotgenes/pi-packages/issues/881
 [openai/codex#28732]: https://github.com/openai/codex/issues/28732

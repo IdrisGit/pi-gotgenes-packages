@@ -1033,6 +1033,11 @@ Attribution is per **token**, not per command, so one invocation can do both: in
 A redirect operator's proof is absolute — it overrides whatever the command in front of it proved, because `> out.txt` writes `out.txt` however read-only that command is.
 When the same path is reached twice with disagreeing directions (`cat a.txt > a.txt`), the two fold to unproven, which consults both surfaces.
 
+When a bash command asks on a path surface, the prompt says why, on a `why` line naming the path that decided the ask, its direction, and what established it: a redirect, the pure-reader core, your global or project `commandEffects`, an option that withdrew the claim, or nothing at all.
+For an unproven path it adds that declaring the command in [`commandEffects`](#declaring-your-own-commands-commandeffects) would classify it.
+The review log records the same facts on every entry for that ask as `decidingPath`, `effect`, and `effectSource`.
+Only the deciding path is recorded, not every path the command referenced; an ask from a file tool (`read`, `write`, `edit`, or an MCP or extension tool) carries none of these, since the tool itself is what establishes its direction.
+
 #### The pure-reader command core
 
 A small, frozen set of command words is read-only for any arguments, in any implementation.
