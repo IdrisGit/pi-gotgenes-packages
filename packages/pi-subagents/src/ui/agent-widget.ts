@@ -203,10 +203,10 @@ export class AgentWidget implements SubagentManagerObserver {
    * background predicate exactly once at the source.
    *
    * The predicate reads the mode of the record's current run, so an agent
-   * resumed in the background shows in the widget whatever mode it was spawned
-   * in, and one resumed in the foreground streams inline instead. It formerly re-derived
-   * it from a per-call display snapshot only the tool door ever built — so every
-   * SDK-spawned agent was filtered out permanently (#724).
+   * resumed in the background shows in the widget regardless of the mode it was
+   * spawned in, and one resumed in the foreground streams inline instead. It
+   * formerly re-derived it from a per-call display snapshot only the tool door
+   * ever built — so every SDK-spawned agent was filtered out permanently (#724).
    */
   private listBackgroundAgents(): Subagent[] {
     return this.manager.listAgents().filter(record => record.isBackground);
