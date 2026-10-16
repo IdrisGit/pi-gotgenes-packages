@@ -427,6 +427,14 @@ describe("floorExemptionOf", () => {
     );
   }
 
+  /** The exemption a unit earns, with or without a write-proving redirect. */
+  function exemptionOf(
+    unitText: string,
+    writesViaRedirect = false,
+  ): string | undefined {
+    return floorExemptionOf(words(unitText), { writesViaRedirect });
+  }
+
   describe("a wrapper running a proven pure reader", () => {
     it.each([
       "xargs grep foo",
@@ -546,14 +554,6 @@ describe("floorExemptionOf", () => {
   });
 
   describe("an execution modifier", () => {
-    /** The exemption a unit earns, with or without a write-proving redirect. */
-    function exemptionOf(
-      unitText: string,
-      writesViaRedirect = false,
-    ): string | undefined {
-      return floorExemptionOf(words(unitText), { writesViaRedirect });
-    }
-
     describe("running any visible command", () => {
       it.each([
         "time pnpm test",
