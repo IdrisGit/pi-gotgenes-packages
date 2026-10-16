@@ -84,6 +84,45 @@ describe("GateRunner — descriptor path", () => {
     );
   });
 
+  it("records the deciding path's provenance on a blocked path ask from the payload", async () => {
+    const { runner, deps } = makeGateRunner({
+      resolveResult: makeCheckResult({ state: "deny", matchedPattern: "*" }),
+    });
+
+    await runner.run(
+      makeDescriptor({
+        surface: "external_directory_write",
+        // The gate no longer stamps the blame on its log context.
+        logContext: { command: "cat a > /outside/b" },
+        payload: makePromptPayload({
+          kind: "bash_external_directory",
+          request: {
+            ...makePromptPayload().request,
+            surface: "external_directory_write",
+            toolName: "bash",
+            value: "cat a > /outside/b",
+            matchedPattern: "*",
+            decidingPath: {
+              path: "/outside/b",
+              effect: "write",
+              effectSource: "syntax",
+            },
+          },
+        }),
+      }),
+      null,
+    );
+
+    expect(deps.reporter.writeReviewLog).toHaveBeenCalledWith(
+      "permission_request.blocked",
+      expect.objectContaining({
+        decidingPath: "/outside/b",
+        effect: "write",
+        effectSource: "syntax",
+      }),
+    );
+  });
+
   it("returns allow and emits session_approved on session hit", async () => {
     const { runner, deps } = makeGateRunner({
       resolveResult: makeCheckResult({

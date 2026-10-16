@@ -26,10 +26,10 @@ import {
   findEvidence,
   type PromptPayload,
 } from "#src/presentation/prompt-payload";
+import { renderReviewLogFacts } from "#src/presentation/review-log-renderer";
 import { SessionRules } from "#src/session/session-rules";
 import type { PermissionCheckResult } from "#src/types";
 import { getNonEmptyString, toRecord } from "#src/value-guards";
-
 import { makeResolver } from "#test/helpers/gate-fixtures";
 import { createManagerWithConfig } from "#test/helpers/manager-harness";
 
@@ -413,16 +413,19 @@ describe("describeBashExternalDirectoryGate", () => {
       ]);
     });
 
-    it("records the deciding path's effect and blame source in the log", async () => {
+    it("blames the deciding path on its effect and source in the payload, not the log context", async () => {
       const result = (await describeGate(
         makeTcc({ input: { command: "cat /outside/a.ts" } }),
         makeResolver(makeCheckResult("ask")),
       )) as GateDescriptor;
 
-      expect(result.logContext).toMatchObject({
+      expect(result.payload.request.decidingPath).toEqual({
+        path: "/outside/a.ts",
         effect: "read",
         effectSource: "core",
       });
+      expect(result.logContext).not.toHaveProperty("effect");
+      expect(result.logContext).not.toHaveProperty("effectSource");
     });
 
     it("records a retraction as the blame source for a guarded word", async () => {
@@ -432,10 +435,12 @@ describe("describeBashExternalDirectoryGate", () => {
       )) as GateDescriptor;
 
       expect(result.surface).toBe("external_directory");
-      expect(result.logContext).toMatchObject({
+      expect(result.payload.request.decidingPath).toEqual({
+        path: "/outside",
         effect: "unproven",
         effectSource: "retracted",
       });
+      expect(result.logContext).not.toHaveProperty("effectSource");
     });
 
     it("records a retraction when a variable may spell the withdrawing option", async () => {
@@ -445,10 +450,12 @@ describe("describeBashExternalDirectoryGate", () => {
       )) as GateDescriptor;
 
       expect(result.surface).toBe("external_directory");
-      expect(result.logContext).toMatchObject({
+      expect(result.payload.request.decidingPath).toEqual({
+        path: "/outside",
         effect: "unproven",
         effectSource: "retracted",
       });
+      expect(result.logContext).not.toHaveProperty("effectSource");
     });
 
     it("records the declaring scope as the blame source for a declared reader", async () => {
@@ -477,10 +484,18 @@ describe("describeBashExternalDirectoryGate", () => {
       ) as GateDescriptor;
 
       expect(result.surface).toBe("external_directory_read");
-      expect(result.logContext).toMatchObject({
+      expect(result.payload.request.decidingPath).toEqual({
+        path: "/outside/a.ts",
         effect: "read",
         effectSource: "declared-project",
       });
+      // What the review log persists for every entry of this ask.
+      expect(renderReviewLogFacts(result.payload)).toMatchObject({
+        decidingPath: "/outside/a.ts",
+        effect: "read",
+        effectSource: "declared-project",
+      });
+      expect(result.logContext).not.toHaveProperty("effectSource");
     });
   });
 

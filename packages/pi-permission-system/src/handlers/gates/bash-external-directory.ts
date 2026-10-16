@@ -106,6 +106,7 @@ export function describeBashExternalDirectoryGate(
   const payload = buildBashExternalDirectoryAskPayload({
     command,
     externalPaths: disclosures,
+    decidingPath: { path: worstEntry.path.value(), effect: worstEntry.effect },
     cwd: tcc.cwd,
     agentName: tcc.agentName,
     toolName: tcc.toolName,
@@ -139,10 +140,6 @@ export function describeBashExternalDirectoryGate(
       agentName: tcc.agentName,
       command,
       externalPaths: uncoveredPaths,
-      // The blame line ADR 0013 §7 asks for: `request.surface` already records
-      // the direction, and these two record what established it.
-      effect: worstEntry.effect.effect,
-      effectSource: worstEntry.effect.source,
     },
     decision: {
       surface,
