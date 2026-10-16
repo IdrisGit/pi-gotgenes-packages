@@ -1838,6 +1838,21 @@ describe("Subagent — a signal that already fired", () => {
 			expect(onRunFinished).toHaveBeenCalledExactlyOnceWith(agent);
 		});
 
+		it("stops before creating a session when the signal fires as the run starts", async () => {
+			const { factory } = createFactory();
+			const controller = new AbortController();
+			const agent = createRunnableAgent({
+				createSubagentSession: factory,
+				signal: controller.signal,
+				observer: { onStarted: () => { controller.abort(); } },
+			});
+
+			await agent.run();
+
+			expect(factory).not.toHaveBeenCalled();
+			expect(agent.status).toBe("stopped");
+		});
+
 		it("stops before preparing a workspace", async () => {
 			const provider = makeWorkspaceProvider(makeWorkspace("/ws/dir"));
 			const agent = createRunnableAgent({ signal: firedSignal(), workspaceProvider: provider });
