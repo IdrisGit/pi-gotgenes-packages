@@ -58,6 +58,7 @@ Run `pnpm --silent fallow guard <file>` before adding a cross-directory import: 
   A bare family key is **load-time sugar**: `expandDirectionalSugar` (`src/policy/normalize.ts`), called once per scope inside `mergeScopesWithOrigins` before origin bookkeeping and the merge, rewrites it into both directional members, sugar entries first and explicit directional entries appended after, whatever the file's key order.
   The mechanism — the resolver's family fold, per-token effect proofs, per-pattern session grants, and their constraints — is ADR 0013 and `docs/architecture/architecture.md` (`normalize.ts`, `permission-resolver.ts`, `command-effects.ts`, `session-approval.ts` entries).
 - Wildcard matching must be explicit and tested — silent over-matching is a permission bypass.
+- A wrapper option grammar that unions BSD and GNU is verified by running both installed binaries over every option the grammar lists, long names included: BSD `env` has no long options and reads `--unset FOO` as `-u nset`, then runs `FOO`.
 - `*` already crosses directory boundaries; `**` is not a distinct globstar and compiles identically.
   Write `~/dev/*`, never `~/dev/**` — in config examples, ADRs, schema descriptions, and tests alike (Refs #806).
 - Prefer config patterns over new runtime mechanisms.
