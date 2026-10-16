@@ -36,11 +36,7 @@ export class SubagentEventsObserver implements SubagentManagerObserver {
 
 	onSubagentStarted(record: Subagent): void {
 		// Emit started event when agent transitions to running (including from queue).
-		this.emit("subagents:started", {
-			id: record.id,
-			type: record.type,
-			description: record.description,
-		});
+		this.emit("subagents:started", identityOf(record));
 	}
 
 	onSubagentCompleted(record: Subagent): void {
@@ -63,11 +59,7 @@ export class SubagentEventsObserver implements SubagentManagerObserver {
 	 * entry records outcomes, and a run that has just begun is not one.
 	 */
 	onSubagentResuming(record: Subagent): void {
-		this.emit("subagents:resuming", {
-			id: record.id,
-			type: record.type,
-			description: record.description,
-		});
+		this.emit("subagents:resuming", identityOf(record));
 	}
 
 	onSubagentResumed(record: Subagent): void {
@@ -98,9 +90,7 @@ export class SubagentEventsObserver implements SubagentManagerObserver {
 	 */
 	onSubagentUpdate(record: Subagent, message: string): void {
 		this.emit("subagents:update", {
-			id: record.id,
-			type: record.type,
-			description: record.description,
+			...identityOf(record),
 			message,
 		});
 		this.notifications.sendUpdate(record, message);
@@ -119,9 +109,7 @@ export class SubagentEventsObserver implements SubagentManagerObserver {
 	onSubagentCompacted(record: Subagent, info: CompactionInfo): void {
 		// Emit compacted event when agent's session compacts (preserves count on record).
 		this.emit("subagents:compacted", {
-			id: record.id,
-			type: record.type,
-			description: record.description,
+			...identityOf(record),
 			reason: info.reason,
 			tokensBefore: info.tokensBefore,
 			compactionCount: record.compactionCount,
@@ -131,10 +119,13 @@ export class SubagentEventsObserver implements SubagentManagerObserver {
 	onSubagentCreated(record: Subagent): void {
 		// Emit created event for background agents (before limiter admission).
 		this.emit("subagents:created", {
-			id: record.id,
-			type: record.type,
-			description: record.description,
+			...identityOf(record),
 			isBackground: record.isBackground,
 		});
 	}
+}
+
+/** The `{ id, type, description }` every lifecycle payload leads with. */
+function identityOf(record: Subagent): Pick<Subagent, "id" | "type" | "description"> {
+	return { id: record.id, type: record.type, description: record.description };
 }
