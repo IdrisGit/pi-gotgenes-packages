@@ -8,6 +8,10 @@ import {
 import { dirname, normalize } from "node:path";
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import type { DebugReviewLogger } from "#src/logging/session-logger";
+import {
+  type DeclaredCommandEffects,
+  NO_DECLARED_COMMAND_EFFECTS,
+} from "./command-effects-config";
 import type { ConfigIssueSource } from "./config-issue-reporter";
 import { loadAndMergeConfigs, loadUnifiedConfig } from "./config-loader";
 import {
@@ -40,6 +44,8 @@ export interface ConfigReader {
 export interface SessionConfigStore extends ConfigReader {
   refresh(cwd: string | undefined, projectTrusted: boolean): void;
   logResolvedPaths(cwd?: string): void;
+  /** The `commandEffects` declarations the last {@link refresh} loaded, scope stamped. */
+  declaredCommandEffects(): DeclaredCommandEffects;
 }
 
 /**
@@ -82,6 +88,9 @@ export class ConfigStore
 {
   private config: PermissionSystemExtensionConfig;
   private configIssues: readonly string[] = [];
+  // Held beside the runtime config rather than on it: `save()` rebuilds the
+  // config through `normalizePermissionSystemConfig`, which would drop it.
+  private declared: DeclaredCommandEffects = NO_DECLARED_COMMAND_EFFECTS;
 
   constructor(private readonly deps: ConfigStoreDeps) {
     this.config = { ...DEFAULT_EXTENSION_CONFIG };
@@ -90,6 +99,14 @@ export class ConfigStore
   /** Return the current extension config. */
   current(): PermissionSystemExtensionConfig {
     return this.config;
+  }
+
+  /**
+   * The user's `commandEffects` declarations as of the last {@link refresh},
+   * each stamped with the scope that declared it.
+   */
+  declaredCommandEffects(): DeclaredCommandEffects {
+    return this.declared;
   }
 
   /**
@@ -133,6 +150,7 @@ export class ConfigStore
     );
     const runtimeConfig = normalizePermissionSystemConfig(mergeResult.merged);
     this.config = runtimeConfig;
+    this.declared = mergeResult.declaredCommandEffects;
 
     this.configIssues = mergeResult.issues;
 

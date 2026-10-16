@@ -466,10 +466,25 @@ describe("buildPermissionsJsonSchema", () => {
   it("extracts the shared sub-schemas into $defs", () => {
     const defs = schema.$defs as Record<string, unknown>;
     expect(Object.keys(defs).sort()).toEqual([
+      "commandEffectsEntry",
       "denyWithReason",
       "permissionMap",
       "permissionState",
     ]);
+  });
+
+  it("refers a nested subcommand entry back to the shared entry definition", () => {
+    const defs = schema.$defs as Record<string, Record<string, unknown>>;
+    const properties = defs.commandEffectsEntry.properties as Record<
+      string,
+      Record<string, unknown>
+    >;
+    expect(properties.subcommands.additionalProperties).toEqual({
+      anyOf: [
+        { $ref: "#/$defs/commandEffectsEntry" },
+        expect.objectContaining({ anyOf: expect.any(Array) }),
+      ],
+    });
   });
 
   it("preserves markdownDescription for editor hovers", () => {

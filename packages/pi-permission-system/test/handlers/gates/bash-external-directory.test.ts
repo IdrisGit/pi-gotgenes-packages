@@ -3,6 +3,10 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import type { AccessIntent } from "#src/access-intent/access-intent";
 import { BashProgram } from "#src/access-intent/bash/program";
+import {
+  foldDeclaredCommandEffects,
+  NO_DECLARED_COMMAND_EFFECTS,
+} from "#src/config/command-effects-config";
 import { describeBashExternalDirectoryGate } from "#src/handlers/gates/bash-external-directory";
 import type {
   GateBypass,
@@ -444,6 +448,38 @@ describe("describeBashExternalDirectoryGate", () => {
       expect(result.logContext).toMatchObject({
         effect: "unproven",
         effectSource: "retracted",
+      });
+    });
+
+    it("records the declaring scope as the blame source for a declared reader", async () => {
+      const tcc = makeTcc({ input: { command: "git log /outside/a.ts" } });
+      const normalizer = new PathNormalizer(
+        pathFlavorForPlatform(process.platform),
+        tcc.cwd,
+      );
+      const program = await BashProgram.parse(
+        "git log /outside/a.ts",
+        normalizer,
+        {
+          commandEffects: foldDeclaredCommandEffects(
+            NO_DECLARED_COMMAND_EFFECTS,
+            { git: { subcommands: { log: "read" } } },
+            "project",
+          ),
+        },
+      );
+
+      const result = describeBashExternalDirectoryGate(
+        tcc,
+        program,
+        makeResolver(makeCheckResult("ask")),
+        normalizer,
+      ) as GateDescriptor;
+
+      expect(result.surface).toBe("external_directory_read");
+      expect(result.logContext).toMatchObject({
+        effect: "read",
+        effectSource: "declared-project",
       });
     });
   });

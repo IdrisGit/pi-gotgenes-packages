@@ -397,10 +397,25 @@ const commandEffectsEntrySchema = z
   });
 
 /** The `commandEffects` map: command basename → its declared effects. */
-export const commandEffectsSchema = z.record(
-  commandKeySchema,
-  commandEffectsEntrySchema,
-);
+export const commandEffectsSchema = z
+  .record(commandKeySchema, commandEffectsEntrySchema)
+  .meta({
+    description:
+      "Declares the filesystem effects of your own bash commands, so a declared reader's path operands consult only the _read surfaces. Keys are bare command basenames; subcommands match exactly; an empty effects array withdraws the operands from the path surfaces.",
+    markdownDescription:
+      'Declares the filesystem effects of your own bash commands, so a path a declared reader names consults only `path_read` / `external_directory_read` rather than both directions.\n\nKeys are bare command basenames (`git`, never `/usr/bin/git`), and `subcommands` match the following word exactly (`git -C dir log` is not `git log`). `effects` is `"read"`, `"write"`, or an array; `[]` declares that the operands touch no file, which withdraws them from the `path` and `external_directory` surfaces while `bash` rules still govern the command. An `unlessOption` stem seen anywhere in the command withdraws the declaration. An undeclared command or subcommand is unknown, and consults both surfaces.\n\nA declaration never overrides the built-in pure-reader core (`cat`, `sed`, `find`, …), and never lifts the indirection-wrapper floor (`xargs git log` still asks).\n\nExample:\n\n```json\n"commandEffects": {\n  "git": { "subcommands": { "log": "read", "diff": { "effects": "read", "unlessOption": ["--output"] } } },\n  "officecli": { "effects": [] }\n}\n```\n\n**Merge order:** shallow-merge by command across global → project. A project entry replaces a colliding command whole but never drops a global one. Agent frontmatter cannot declare effects.',
+    examples: [
+      {
+        git: {
+          subcommands: {
+            log: "read",
+            diff: { effects: "read", unlessOption: ["--output"] },
+          },
+        },
+        officecli: { effects: [] },
+      },
+    ],
+  });
 
 /**
  * The on-disk config file shape.
@@ -519,6 +534,7 @@ export const unifiedConfigSchema = z
     }),
     permission: permissionSchema.optional(),
     shellTools: shellToolsSchema.optional(),
+    commandEffects: commandEffectsSchema.optional(),
   })
   .meta({
     title: "PI Permission System Configuration",
@@ -560,9 +576,9 @@ export type PromptNotificationChannel = z.infer<
 /**
  * Derive the published JSON Schema (Draft 2020-12) from the zod source.
  *
- * The three id-tagged sub-schemas (`permissionState`, `permissionMap`,
- * `denyWithReason`) become `$defs` referenced by `$ref`; everything else
- * inlines. The root `$id` is set to the canonical monorepo URL.
+ * The four id-tagged sub-schemas (`permissionState`, `permissionMap`,
+ * `denyWithReason`, and the recursive `commandEffectsEntry`) become `$defs`
+ * referenced by `$ref`; everything else inlines. The root `$id` is set to the canonical monorepo URL.
  */
 export function buildPermissionsJsonSchema(): Record<string, unknown> {
   const { $schema, ...rest } = z.toJSONSchema(unifiedConfigSchema, {
