@@ -14,6 +14,7 @@ import type { ConcurrencyLimiter } from "#src/lifecycle/concurrency-limiter";
 import type { CreateSubagentSessionParams } from "#src/lifecycle/create-subagent-session";
 import type { ParentSnapshot } from "#src/lifecycle/parent-snapshot";
 import { type ResumeRefusal, Subagent, type SubagentLifecycleObserver } from "#src/lifecycle/subagent";
+import type { RunKind } from "#src/lifecycle/subagent-run";
 import type { SubagentSession } from "#src/lifecycle/subagent-session";
 import { SubagentState } from "#src/lifecycle/subagent-state";
 import type { WorkspaceProvider } from "#src/lifecycle/workspace";
@@ -140,16 +141,15 @@ export function resolveRetentionWindow(
 
 /** Observer interface for agent lifecycle notifications. */
 export interface SubagentManagerObserver {
-  onSubagentStarted(record: Subagent): void;
-  onSubagentCompleted(record: Subagent): void;
   /**
-   * Fires when a resume starts, from whichever front door asked for it.
-   * Required: a consumer that tracks the widget's live set has to learn that a
-   * settled record went back to running, and the only alternative is polling.
+   * Fires when a run starts: the initial run, or a resume from whichever front
+   * door asked for it. A consumer that tracks the widget's live set has to learn
+   * that a settled record went back to running, and the only alternative is
+   * polling.
    */
-  onSubagentResuming(record: Subagent): void;
-  /** Fires when a resumed run reaches a terminal state (distinct from a fresh completion). */
-  onSubagentResumed(record: Subagent): void;
+  onSubagentRunStarted(record: Subagent, kind: RunKind): void;
+  /** Fires when a run reaches a terminal state, whatever that state is. */
+  onSubagentRunFinished(record: Subagent, kind: RunKind): void;
   /**
    * Fires when a running child sends its parent a mid-run message.
    * Optional: the widget has no use for it, and a hook nobody supplies is a
@@ -262,11 +262,7 @@ export class SubagentManager {
   private buildObserver(options: AgentSpawnConfig): SubagentLifecycleObserver {
     return {
       onRunStarted: (agent, kind) => {
-        if (kind === "initial") {
-          this.observer?.onSubagentStarted(agent);
-          return;
-        }
-        try { this.observer?.onSubagentResuming(agent); } catch (err) { debugLog("onSubagentResuming observer", err); }
+        try { this.observer?.onSubagentRunStarted(agent, kind); } catch (err) { debugLog("onSubagentRunStarted observer", err); }
       },
       onSessionCreated: options.observer?.onSessionCreated
         ? (agent) => options.observer!.onSessionCreated!(agent)
@@ -277,11 +273,7 @@ export class SubagentManager {
       // lifecycle event and the session-history record, which are facts about
       // the run rather than announcements.
       onRunFinished: (agent, kind) => {
-        if (kind === "initial") {
-          try { this.observer?.onSubagentCompleted(agent); } catch (err) { debugLog("onSubagentCompleted observer", err); }
-          return;
-        }
-        try { this.observer?.onSubagentResumed(agent); } catch (err) { debugLog("onSubagentResumed observer", err); }
+        try { this.observer?.onSubagentRunFinished(agent, kind); } catch (err) { debugLog("onSubagentRunFinished observer", err); }
       },
       onUpdateSent: (agent, message) => {
         this.observer?.onSubagentUpdate?.(agent, message);

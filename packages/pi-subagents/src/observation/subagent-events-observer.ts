@@ -1,4 +1,5 @@
 import type { SubagentManagerObserver } from "#src/lifecycle/subagent-manager";
+import type { RunKind } from "#src/lifecycle/subagent-run";
 import { buildEventData, type NotificationSystem } from "#src/observation/notification";
 import { SUBAGENT_RECORD_ENTRY, toPersistedRecord } from "#src/persisted-record";
 import type { CompactionInfo, Subagent } from "#src/types";
@@ -34,47 +35,32 @@ export class SubagentEventsObserver implements SubagentManagerObserver {
 		this.notifications = deps.notifications;
 	}
 
-	onSubagentStarted(record: Subagent): void {
-		// Emit started event when agent transitions to running (including from queue).
-		this.emit("subagents:started", identityOf(record));
-	}
-
-	onSubagentCompleted(record: Subagent): void {
-		// Emit lifecycle event based on terminal status.
-		const isError = record.isTerminalError();
-		const eventData = buildEventData(record);
-		if (isError) {
-			this.emit("subagents:failed", eventData);
-		} else {
-			this.emit("subagents:completed", eventData);
-		}
-
-		this.persistAndNotify(record);
+	/**
+	 * A run started. The initial run announces on `subagents:started`; a settled
+	 * agent going back to running announces on its own channel, because a
+	 * consumer counting `started` once per agent must not see it twice. Nothing
+	 * is persisted: the session entry records outcomes, and a run that has just
+	 * begun is not one.
+	 */
+	onSubagentRunStarted(record: Subagent, kind: RunKind): void {
+		this.emit(kind === "initial" ? "subagents:started" : "subagents:resuming", identityOf(record));
 	}
 
 	/**
-	 * A settled agent went back to running. Announced only, and on its own
-	 * channel: `subagents:started` reports the first run, and a consumer counting
-	 * it once per agent must not see it twice. Nothing is persisted — the session
-	 * entry records outcomes, and a run that has just begun is not one.
+	 * A run reached a terminal state. The initial run's channel says whether it
+	 * succeeded; a resumed run terminates in any terminal status on one distinct
+	 * channel, the payload's status/error discriminating, so subagents:completed
+	 * and subagents:failed subscribers keep their once-per-agent semantics.
 	 */
-	onSubagentResuming(record: Subagent): void {
-		this.emit("subagents:resuming", identityOf(record));
-	}
-
-	onSubagentResumed(record: Subagent): void {
-		// A resumed run terminates in any terminal status; a single distinct
-		// channel carries them all — the payload's status/error discriminate. Existing
-		// subagents:completed/failed subscribers keep their once-per-run semantics.
-		this.emit("subagents:resumed", buildEventData(record));
+	onSubagentRunFinished(record: Subagent, kind: RunKind): void {
+		this.emit(finishedChannel(record, kind), buildEventData(record));
 		this.persistAndNotify(record);
 	}
 
 	/**
 	 * Persist the terminal record for cross-extension history reconstruction and
-	 * announce completion. Shared by every terminal-state handler (fresh and
-	 * resumed). Whether a nudge is actually owed is the notification manager's
-	 * decision — it suppresses itself when a carrier has claimed the outcome or
+	 * announce completion, for every finished run, initial or resumed. Whether a
+	 * nudge is actually owed is the notification manager's decision — it suppresses itself when a carrier has claimed the outcome or
 	 * the parent has already consumed it. Both are domain state on the record,
 	 * not owned here.
 	 */
@@ -128,4 +114,10 @@ export class SubagentEventsObserver implements SubagentManagerObserver {
 /** The `{ id, type, description }` every lifecycle payload leads with. */
 function identityOf(record: Subagent): Pick<Subagent, "id" | "type" | "description"> {
 	return { id: record.id, type: record.type, description: record.description };
+}
+
+/** The channel a finished run is announced on. */
+function finishedChannel(record: Subagent, kind: RunKind): string {
+	if (kind === "resume") return "subagents:resumed";
+	return record.isTerminalError() ? "subagents:failed" : "subagents:completed";
 }
