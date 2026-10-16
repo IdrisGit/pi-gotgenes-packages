@@ -1160,6 +1160,7 @@ Three things a declaration cannot do:
 - **Reach through a wrapper.**
   A declaration describes a command's own arguments: `xargs git log ~/x` keeps the [indirection-wrapper floor](#declarations-and-privilege), and `~/x` consults both surfaces there.
   A wrapper's arguments carry the command it runs, so a declaration keyed by a wrapper itself (`xargs`, `sudo`, `env`, `time`, `timeout`, a shell, `eval`, and the rest of the floor's list) is never read either, and the extension warns about it when it loads the config.
+  That list is the floor's, not every prefix command: a declaration for `command`, `exec`, `builtin`, `busybox`, or `ionice` is read like any other and describes the arguments that follow it, which are the command it runs, so do not declare one.
 - **Come from an agent.**
   Only the global and project config files declare effects; agent frontmatter cannot, since an agent declaring its own tools read-only would be granting itself relief.
 
