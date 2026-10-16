@@ -1155,6 +1155,7 @@ All three of these must hold, and each is a way a command could still run:
    No other wrapper qualifies, since bare `xargs` runs `echo` and `sudo` and `doas` are not audited for their bare forms.
 2. Every word after `env` is an option `env` is known to take, that option's value, `--` or a lone `-`, or a `NAME=value` assignment after the options.
    A [refused mode](#declarations-and-privilege) keeps the floor even with no command (`env -C /tmp`, `env -S 'rm x'`), and so does a quoted assignment (`env 'FOO=1'`), which reads as a command.
+   So does `env --unset FOO`: BSD `env` (the macOS one) has no long options and reads it as `-u nset`, then runs `FOO`; `env --unset=FOO` and `env -u FOO` qualify.
 3. Every one of those words is written literally.
    `env -u $X` with `X="FOO rm"` runs `rm`, and `env $X` may name any command.
 
@@ -1197,6 +1198,7 @@ So `xargs -n 1 cat` and `env -u FOO cat x` still resolve by `cat`'s rule, while 
 - `env -C`/`--chdir`, because relative operands resolve somewhere the path surfaces do not look (`env -C /etc cat shadow` reads `/etc/shadow`).
 - `env -S`/`--split-string`, because the command is split out of one word at run time (`env -Srm cat` runs `rm cat`).
 - `env -P`, `-a`/`--argv0`, and `--env0-from`, because each chooses which binary the named command is: a search path, the argv0 a multi-call binary dispatches on, or an environment that may set `PATH`.
+- `env --unset` with its value as a separate word, because BSD `env` reads `--unset FOO cat x` as `-u nset` and runs `FOO`, while GNU `env` unsets `FOO` and runs `cat`; `--unset=FOO` and `-u FOO` are read the same by both.
 - `xargs -J`, because it puts input in the command's place when the command equals its replacement string.
 - `doas -C` (it checks a config and runs nothing), `doas -s` (it runs a shell), and OpenBSD's `doas -a`, which `opendoas` does not list.
 

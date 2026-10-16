@@ -39,9 +39,10 @@
  * exempt when every word after `env` is literal and is an option `env` lists,
  * its value, `--` or a lone `-`, or a `NAME=value` assignment, so it names no
  * command and runs nothing. Measured 2026-10-16 against the same log,
- * 2026-07 onward: 357 of 1162 prompts floored, 193 relieved (54.1% of
- * floored), 34 of them by the no-command clause alone (33 bare `env`, one
- * `env -i`), with the other clauses' figures unchanged.
+ * 2026-07 onward: 363 of 1181 prompts floored, 196 relieved (54.0% of
+ * floored), 37 of them by the no-command clause alone (35 bare `env`, one
+ * `env -i`, one `/usr/bin/env --version`), with the other clauses' figures
+ * unchanged. `--unset` admits its value only attached, as `ENV_GRAMMAR` does.
  *
  * Only the sentinel era is totalled. The floor sentinels reach the review log
  * from 2026-07 — earlier entries carry no `matchedPattern` field and no
@@ -184,8 +185,10 @@ const MODIFIER_FLAGS = new Map([
 
 /**
  * `env`'s options (`ENV_GRAMMAR`), the wrapper whose bare form runs nothing:
- * short letters and full long names, each a flag, a value, or an attached-only
- * optional value. Anything absent refuses, as an abbreviation does here.
+ * short letters and full long names, each a flag, a value, or a value taken
+ * only attached (an optional one, or `--unset`, whose detached form BSD reads
+ * as `-u nset` and a command). Anything absent refuses, as an abbreviation
+ * does here.
  */
 const ENV_SHORT = new Map([
   ["0", "flag"],
@@ -200,7 +203,7 @@ const ENV_LONG = new Map([
   ["list-signal-handling", "flag"],
   ["null", "flag"],
   ["version", "flag"],
-  ["unset", "value"],
+  ["unset", "attached"],
   ["block-signal", "optional"],
   ["default-signal", "optional"],
   ["ignore-signal", "optional"],
@@ -466,7 +469,8 @@ function envOptionWords(word) {
     const [name, value] = word.slice(2).split("=", 2);
     const arity = ENV_LONG.get(name);
     if (arity === undefined) return undefined;
-    return arity === "value" && value === undefined ? 2 : 1;
+    if (arity === "attached" && value === undefined) return undefined;
+    return 1;
   }
   const letters = word.slice(1);
   for (let position = 0; position < letters.length; position++) {

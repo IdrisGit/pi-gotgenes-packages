@@ -220,12 +220,13 @@ Three guards keep it from admitting a command:
 
 - The unit's own option walk ends exactly on its last word: every word is an option the wrapper's grammar lists, its value, `--` or a lone `-`, or a `NAME=value` assignment after the options.
   A refusing mode (`env -S`, `-C`, `-P`, `-a`, `--env0-from`) and an option missing its value keep the floor.
+  So does `--unset` with a separate value: BSD `env` has no long options and reads `--unset FOO` as `-`, then `-u nset`, and runs `FOO`, so the grammar admits `--unset`'s value only attached (`--unset=FOO`), which also corrects where the peel places the inner command of `env --unset FOO cat x`.
 - Every word after the wrapper name is literal, the rule of the 2026-10-13 amendment: `env -u $X` with `X="FOO rm"` runs `rm`.
 - Only the outermost layer is read, so `sudo env` and `time env` keep the floor; none of them appears in the review log.
 
 Like the execution-modifier clause, it carries no redirect refusal: it classifies nothing, and `env > /tmp/x` is decided as `printenv > /tmp/x` is.
 The recorded reason is `no-command`, and it cannot coincide with the other two, which both need an inner command.
-Measured over the local review log from 2026-07: of 357 floored prompts, 34 more are relieved by this clause alone (`scripts/measure-wrapper-transparency.mjs`).
+Measured over the local review log from 2026-07: of 363 floored prompts, 37 more are relieved by this clause alone (`scripts/measure-wrapper-transparency.mjs`).
 
 ## Context
 
