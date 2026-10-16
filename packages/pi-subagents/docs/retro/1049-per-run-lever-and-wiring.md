@@ -67,5 +67,19 @@ Pre-completion reviewer: WARN on the first round, PASS on the delta.
   - No test covered a caller signal that fires during `onStarted`.
 
 [#949]: https://github.com/gotgenes/pi-packages/issues/949
+
+## Stage: Sync (worktree) (2026-10-16T02:54:29Z)
+
+### Session summary
+
+`pnpm run lint` and `pnpm fallow dead-code` both pass on the branch, ahead of the rebase onto local `main`.
+The plan's `**Release:**` marker is `ship independently`, and the branch carries two `fix:` commits, so `/ship` should cut a patch release for `@gotgenes/pi-subagents`; no follow-up issues were filed.
+
+**Peer session transcript:** `/Users/chris/.pi/agent/sessions/--Users-chris-development-pi-pi-packages-worktrees-issue-1049--/2026-10-16T00-49-55-464Z_01a1422f-dd05-776f-8c72-a90291eb9369.jsonl` — read with `read_session_file({ path: "<path>" })` for message-level verification at land/retro time.
+
+### Observations
+
+- The reviewer's WARNs were both settled before this stage, so nothing was left open at sync.
+
 [#1050]: https://github.com/gotgenes/pi-packages/issues/1050
 [#1051]: https://github.com/gotgenes/pi-packages/issues/1051
