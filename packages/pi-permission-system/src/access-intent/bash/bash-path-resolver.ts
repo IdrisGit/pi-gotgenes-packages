@@ -564,6 +564,7 @@ export class BashPathResolver {
     const externalPaths: BashExternalPath[] = [];
 
     for (const { token, base, effect, role } of candidates) {
+      if (withdrawnByRole(role)) continue;
       const candidate = admittedByRole(role)
         ? token
         : classifyTokenAsPathCandidate(token);
@@ -681,6 +682,9 @@ export class BashPathResolver {
       // spells both words rather than the first.
       const spelling = span && this.absoluteSpellingOf(token, probed.path);
       if (spelling) spellings.set(spanKey(span), spelling);
+      // Spelled for the `bash` surface, but withdrawn from the path surface
+      // ahead of the fold, so it never merges with a real attribution.
+      if (withdrawnByRole(role)) continue;
 
       const key = matchValues.join("\0");
       const index = seen.get(key);
@@ -845,6 +849,14 @@ function tagTokens(
  */
 function admittedByRole(role: TokenRole): boolean {
   return role === "redirect-destination";
+}
+
+/**
+ * Whether a candidate's role withdraws it from the path surfaces: an operand
+ * of a command the user declared `effects: []`, which touches no file.
+ */
+function withdrawnByRole(role: TokenRole): boolean {
+  return role === "inert-operand";
 }
 
 /**

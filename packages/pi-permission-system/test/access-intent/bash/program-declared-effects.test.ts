@@ -100,6 +100,74 @@ describe("BashProgram with commandEffects declarations", () => {
     });
   });
 
+  describe("an effects: [] command's operands", () => {
+    const OFFICECLI = declare({ officecli: { effects: [] } });
+
+    it("reach neither path surface", async () => {
+      const program = await BashProgram.parse(
+        "officecli set data.xlsx /Sheet1/B1",
+        normalizer,
+        { commandEffects: OFFICECLI },
+      );
+
+      expect(program.externalAccesses()).toEqual([]);
+      expect(program.pathRuleCandidates()).toEqual([]);
+    });
+
+    it("still spell the command's unit for the bash surface", async () => {
+      const program = await BashProgram.parse(
+        "officecli set sub/data.xlsx /Sheet1/B1",
+        normalizer,
+        { commandEffects: OFFICECLI },
+      );
+
+      expect(program.commands()).toEqual([
+        {
+          text: "officecli set sub/data.xlsx /Sheet1/B1",
+          spellings: [`officecli set ${cwd}/sub/data.xlsx /Sheet1/B1`],
+        },
+      ]);
+    });
+
+    it.each(["officecli x ~/x; cat ~/x", "cat ~/x; officecli x ~/x"])(
+      "never fold with another command's attribution of the same path in %s",
+      async (command) => {
+        expect(await externalsOf(command, OFFICECLI)).toEqual([
+          { path: HOME_X, effect: { effect: "read", source: "core" } },
+        ]);
+
+        const program = await BashProgram.parse(command, normalizer, {
+          commandEffects: OFFICECLI,
+        });
+        expect(
+          program.pathRuleCandidates().map(({ token, effect }) => ({
+            token,
+            effect,
+          })),
+        ).toEqual([
+          { token: "~/x", effect: { effect: "read", source: "core" } },
+        ]);
+      },
+    );
+
+    it("leave a nested command's operands on the path surfaces", async () => {
+      expect(
+        await externalsOf("officecli $(cat /etc/hosts) x", OFFICECLI),
+      ).toEqual([
+        { path: "/etc/hosts", effect: { effect: "read", source: "core" } },
+      ]);
+    });
+
+    it("leave a redirect's destination on the path surfaces", async () => {
+      expect(await externalsOf("officecli x > ~/out", OFFICECLI)).toEqual([
+        {
+          path: join(homedir(), "out"),
+          effect: { effect: "write", source: "syntax" },
+        },
+      ]);
+    });
+  });
+
   describe("a declaration for a core word", () => {
     it("never overrides the core's retraction", async () => {
       expect(
