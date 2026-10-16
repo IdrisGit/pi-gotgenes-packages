@@ -1019,7 +1019,7 @@ Release: independent
 
 **Cause:** whether a run is the initial run or a resume is a property of the run, but it is re-decided in parallel method pairs at three layers (the session's turn loop, the record's run body and terminal transitions, and the lifecycle observer), and the pairs have already diverged.
 A resumed run that wraps up at its turn limit while asking a question keeps its workspace, where an initial run in the same state tears it down: [#1021]'s rule, which [#1022] did not carry to resumes when it gave them a turn budget.
-`fallow dupes` sees the session layer's half as the package's only production clone group.
+`fallow dupes` saw the session layer's half as the package's only production clone group until [#1049] gave both turn loops one prompt helper; the session layer's method pair remains.
 
 - **Smell:** Category C (a repeated discriminator spelled as method pairs), Category A (production duplication), and Category G (the concentrated test-design cluster in `test/lifecycle/subagent.test.ts`).
 - **Target:** `src/lifecycle/subagent-session.ts` (`runTurnLoop`/`resumeTurnLoop`); `src/lifecycle/subagent.ts` (`run`/`runResume`, `completeRun`/`completeResume`, `failRun`/`failResume`); `SubagentLifecycleObserver` and `SubagentManager.buildObserver`; `src/observation/subagent-events-observer.ts`, which maps the run kind to the published channels in one place; and `test/lifecycle/subagent.test.ts` and `test/lifecycle/subagent-session.test.ts`.
@@ -1028,7 +1028,7 @@ A resumed run that wraps up at its turn limit while asking a question keeps its 
   Whether `SubagentManagerObserver`'s `onSubagentResuming`/`onSubagentResumed` collapse too is the plan's call.
 - **Ride-along tidying:** one builder for the `{ id, type, description }` payload the events observer writes by hand at 5 sites, since this step rewrites how that observer maps runs to channels; and in `subagent-session.test.ts`, an assistant-message factory for the literal repeated 10+ times, with the third local session mock folded into the shared ones.
   The payload row reads at most 1.
-- **Outcome:** the run-kind-forked names row reads 0 and `fallow dupes` reports no production clone.
+- **Outcome:** the run-kind-forked names row reads 0 and `fallow dupes` still reports no production clone (met since [#1049]).
   A resumed run follows the initial run's workspace rule, pinned by the missing resume-side test, written first.
   The four terminal methods are private, the `subagent.test.ts` `mock.calls[N]` reads fall to the row's target through a channel-capturing helper, and the `describe` blocks nest by run kind.
 - **Commit type:** `fix:` for the resume's workspace rule; `refactor:` and `test:` for the rest, including the ride-along.
