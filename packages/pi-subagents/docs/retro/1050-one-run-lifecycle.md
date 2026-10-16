@@ -52,6 +52,30 @@ The baseline suite was 2116 tests in 86 files, all green at `12e693a6`.
 - `packages/pi-subagents/test/lifecycle/subagent-manager.test.ts`: a `byRunKind` observer helper ahead of step 12's rename was rated marginal and not folded in.
 
 [#1021]: https://github.com/gotgenes/pi-packages/issues/1021
+
+## Stage: Implementation — TDD (2026-10-16T05:22:41Z)
+
+### Session summary
+
+All 14 plan steps landed as 14 commits, plus one review follow-up (`test(pi-subagents): stop naming the removed terminal methods in test comments`).
+The pi-subagents suite went from 2116 to 2142 tests in 86 files (the plan estimated about 2125); the run-kind grid and the new turn-limit, later-run, and observer tests account for the rest.
+Pre-completion reviewer: WARN on the first round (two stale test comments, fixed), WARN on the delta (only the accepted missing `(#1050)` suffix on the `fix:` subject, whose body carries `Refs #1050`).
+
+### Observations
+
+- Every killing mutation killed its predicted class, with three refinements:
+  - Step 8's "call `runTurnLoop` instead of `resumeTurnLoop`" killed 30 tests, not every staged one: the staged tests that assert no resume text (`returns the resumed record`, `leaves the outcome unclaimed by default`, the `onSubagentResumed` spies) stay green under it, which is correct, since they do not depend on which stub the resume reads.
+  - Step 9's precedence swap killed only the first precedence case, as expected for an `??` reorder.
+  - Step 2's `askParent: undefined` left the "drops a recorded question when the run fails" tests green (an unasked question is also undefined); step 1's mutation of `clearPendingQuestion` is what pins them.
+- Deviation: step 9 missed two `subagent-manager.test.ts` tests that read `runTurnLoop.mock.calls[0][1]` for `defaultMaxTurns`/`wrapUpTurns`; the full-suite run caught one, and both moved to asserting the factory's `turnLimits` in the same commit.
+- Deviation: step 11 kept `run()`'s call to `onSessionCreated` before the record observer attaches (it was after); the one consumer, `foreground-runner.ts`, only stores the record, and nothing awaits between them.
+- Deviation: step 13 also replaced step 1's `runToTerminal` helper with `runToOutcome` (which gained an `error` option and a shared `outcomeLoop`), so the grid's run-kind drivers and the terminal tests share one arrange.
+  The re-nest moved 38 top-level blocks under one root (21 record-level, 9 initial-run, 7 resume, 1 grid) with the test count unchanged at 193; it orphaned three section-header comments and the provider-failure comment, cleaned up in that commit and the review follow-up.
+- Step 6's fold hit a self-inflicted `TS2456` (the scripted rename rewrote the `TestSession` alias into itself); fixed before the commit.
+- The plan's step-12 rename count held: 107 references across five test files, with resume-only and resume-from-finish manager observers guarded on the kind.
+- Measured at the end: run-kind row 0, payload row 1, `subagent.test.ts` `mock.calls[` 1, top-level `describe(` 1, `lifecycle/subagent.ts` 826 lines (from 850), `resetForResume` 8 (unchanged, [#1051]'s), and `fallow dupes` reports only the `subagent-state.ts`/test-helper group.
+- Reviewer warnings: two stale test comments naming `completeRun`/`failRun` (fixed); the `fix:` subject without `(#1050)` (accepted).
+
 [#1049]: https://github.com/gotgenes/pi-packages/issues/1049
 [#1051]: https://github.com/gotgenes/pi-packages/issues/1051
 [#1058]: https://github.com/gotgenes/pi-packages/issues/1058
