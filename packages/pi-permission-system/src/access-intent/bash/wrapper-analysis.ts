@@ -544,16 +544,30 @@ function innerCommandIndex(words: readonly CommandWord[]): number {
 }
 
 /**
- * {@link innerCommandIndex} for a wrapper read as getopt_long reads it, with
+ * {@link innerCommandIndex} for a wrapper read as getopt_long reads it: where
+ * {@link getoptWalkEnd} stops, or `-1` when an option is refused or the words
+ * run out first.
+ */
+function getoptInnerIndex(
+  words: readonly CommandWord[],
+  grammar: GetoptGrammar,
+): number {
+  const end = getoptWalkEnd(words, grammar);
+  return end !== -1 && end < words.length ? end : -1;
+}
+
+/**
+ * Where a wrapper's own words end, read as getopt_long reads them, with
  * options permuted no further than the first non-option, as every grammar here
  * does (a `+` optstring, or BSD getopt, which never permutes).
  *
  * Options come first, then — for a wrapper that takes them — the `NAME=value`
- * assignments it passes to the command, then the command. `-1` when an option
- * is refused, unlisted, or an ambiguous abbreviation, or when the words run out
- * first.
+ * assignments it passes to the command. The answer is the index of the word
+ * after them: the command's, `words.length` when every word was the wrapper's
+ * own, or past the end when a value-taking option ran out of words. `-1` when
+ * an option is refused, unlisted, or an ambiguous abbreviation.
  */
-function getoptInnerIndex(
+function getoptWalkEnd(
   words: readonly CommandWord[],
   grammar: GetoptGrammar,
 ): number {
@@ -578,7 +592,7 @@ function getoptInnerIndex(
   ) {
     index++;
   }
-  return index < words.length ? index : -1;
+  return index;
 }
 
 /**
