@@ -1423,7 +1423,7 @@ describe("Subagent", () => {
 					return Promise.resolve(turnLoopResult({ responseText: "" }));
 				});
 
-				await agent.resume("continue", firedSignal());
+				await agent.resume("continue", { signal: firedSignal() });
 
 				expect(abortedAtEntry).toBe(true);
 				expect(agent.status).toBe("stopped");
@@ -1966,7 +1966,7 @@ describe("Subagent", () => {
 					loopSignal = signal;
 					return Promise.resolve(turnLoopResult({ responseText: "resumed" }));
 				});
-				await agent.resume("continue", callerSignal);
+				await agent.resume("continue", { signal: callerSignal });
 				expect(stub.runTurnLoop).toHaveBeenCalledExactlyOnceWith("continue", expect.objectContaining({ signal: expect.any(AbortSignal) }));
 				// The caller's signal is wired through abort(); the loop runs under the
 				// record's own lever, so abort(id) reaches it too.
@@ -2026,7 +2026,7 @@ describe("Subagent", () => {
 				const loop = parkLoopUntilSignalled(stub.runTurnLoop);
 				const caller = new AbortController();
 
-				const resumed = agent.resume("continue", caller.signal);
+				const resumed = agent.resume("continue", { signal: caller.signal });
 				caller.abort();
 				await resumed;
 

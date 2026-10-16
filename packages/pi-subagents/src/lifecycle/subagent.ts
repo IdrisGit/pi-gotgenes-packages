@@ -114,6 +114,12 @@ export interface SubagentExecution {
 	signal?: AbortSignal;
 }
 
+/** What one resume of a subagent is started with. */
+export interface ResumeRunOptions {
+	/** Cancels the resumed run through its own lever, ending it like `abort()` does. */
+	signal?: AbortSignal;
+}
+
 export interface SubagentInit {
 	// Identity
 	id: string;
@@ -527,7 +533,7 @@ export class Subagent {
 	 * turn loop, so both levers stop the same run and both leave the record
 	 * reading `stopped`.
 	 */
-	resume(prompt: string, signal?: AbortSignal): Promise<void> {
+	resume(prompt: string, options: ResumeRunOptions = {}): Promise<void> {
 		const subagentSession = this.subagentSession;
 		if (!subagentSession) {
 			// Rejection, not a throw: this method is not async, and a synchronous
@@ -535,7 +541,7 @@ export class Subagent {
 			return Promise.reject(new Error("Subagent not configured for resume — missing session"));
 		}
 
-		this._promise = this.continueSession(subagentSession, prompt, signal);
+		this._promise = this.continueSession(subagentSession, prompt, options);
 		return this._promise;
 	}
 
@@ -545,10 +551,10 @@ export class Subagent {
 	 * Synchronous up to the turn loop, so the record reads running, and the
 	 * started notification has fired, by the time resume() returns.
 	 */
-	private async continueSession(session: SubagentSession, prompt: string, signal?: AbortSignal): Promise<void> {
+	private async continueSession(session: SubagentSession, prompt: string, options: ResumeRunOptions): Promise<void> {
 		// After resetForResume, which releases the previous run's handles.
 		this.resetForResume(Date.now());
-		const run = new SubagentRun("resume", signal, () => this.abort());
+		const run = new SubagentRun("resume", options.signal, () => this.abort());
 		this.currentRun = run;
 		// Cancelled before it started: the turn loop takes no turn on a fired lever,
 		// so the resume ends like one aborted mid-run.

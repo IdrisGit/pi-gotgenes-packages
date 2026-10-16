@@ -13,7 +13,12 @@ import { debugLog } from "#src/debug";
 import type { ConcurrencyLimiter } from "#src/lifecycle/concurrency-limiter";
 import type { CreateSubagentSessionParams } from "#src/lifecycle/create-subagent-session";
 import type { ParentSnapshot } from "#src/lifecycle/parent-snapshot";
-import { type ResumeRefusal, Subagent, type SubagentLifecycleObserver } from "#src/lifecycle/subagent";
+import {
+  type ResumeRefusal,
+  type ResumeRunOptions,
+  Subagent,
+  type SubagentLifecycleObserver,
+} from "#src/lifecycle/subagent";
 import type { RunKind } from "#src/lifecycle/subagent-run";
 import type { SubagentSession } from "#src/lifecycle/subagent-session";
 import { SubagentState } from "#src/lifecycle/subagent-state";
@@ -63,9 +68,7 @@ export type ResumeStart =
   | { kind: "refused"; reason: ResumeRefusalReason };
 
 /** Per-call knobs for a resume; both doors pass their own. */
-export interface ResumeCallOptions {
-  /** Cancels the resumed turn loop, through the record's own lever — so it ends like `abort(id)` does. */
-  signal?: AbortSignal;
+export interface ResumeCallOptions extends ResumeRunOptions {
   /**
    * The caller will deliver this outcome to the parent, so nothing announces
    * it. Omitted, the resumed outcome is announced like any other completion.
@@ -428,7 +431,7 @@ export class SubagentManager {
     else agent.releaseClaims();
     // Published as agent.promise, which always resolves; it rejects only for a
     // missing session, which resumeRefusal has already refused as no-session.
-    void agent.resume(prompt, options.signal);
+    void agent.resume(prompt, { signal: options.signal });
     return { kind: "started", record: agent };
   }
 
