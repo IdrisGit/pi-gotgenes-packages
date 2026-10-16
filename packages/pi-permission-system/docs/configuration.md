@@ -1095,11 +1095,12 @@ The core stays small on purpose, so most of the readers you use every day (`git 
 {
   "commandEffects": {
     "git": {
+      "unlessOption": ["--output"],
       "subcommands": {
         "log": "read",
         "show": "read",
         "status": "read",
-        "diff": { "effects": "read", "unlessOption": ["--output"] },
+        "diff": "read",
         "remote": { "subcommands": { "show": "read" } }
       }
     },
@@ -1141,7 +1142,7 @@ The rules are fail-closed wherever a rule had to choose:
 - **An `unlessOption` stem withdraws the declaration, and never substitutes another.**
   It is matched the way the core's own withdrawing options are: a single letter after one dash (`-o`) anywhere in a cluster or with its value attached (`-so`, `-ofile`), a long option (`--output`) bare, with `=value`, or abbreviated (`--out`), and a longer single-dash option (`-exec`) as written or with a suffix (`-execdir`).
   A word whose value only the shell decides withdraws it too when it may arrive beginning with `-`.
-  Stems met on the way down to a subcommand all apply to it.
+  Stems met on the way down to a subcommand all apply to it, which is why the recipe guards `--output` on `git` itself: `git log`, `git show`, and `git diff` all accept `--output=<file>`, which writes it.
 - **`["read", "write"]` consults both surfaces**, as an unproven path does; `"write"` alone consults only `_write`, which mostly makes a prompt more honest.
 
 `effects: []` is for a tool whose arguments look like paths and are not.
@@ -1158,6 +1159,7 @@ Three things a declaration cannot do:
   The extension warns about such an entry when it loads the config.
 - **Reach through a wrapper.**
   A declaration describes a command's own arguments: `xargs git log ~/x` keeps the [indirection-wrapper floor](#declarations-and-privilege), and `~/x` consults both surfaces there.
+  A wrapper's arguments carry the command it runs, so a declaration keyed by a wrapper itself (`xargs`, `sudo`, `env`, `time`, `timeout`, a shell, `eval`, and the rest of the floor's list) is never read either, and the extension warns about it when it loads the config.
 - **Come from an agent.**
   Only the global and project config files declare effects; agent frontmatter cannot, since an agent declaring its own tools read-only would be granting itself relief.
 

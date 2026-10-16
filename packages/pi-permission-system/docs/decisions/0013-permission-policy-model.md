@@ -250,6 +250,7 @@ The `bash` surface keeps their absolute argument spellings, so a `bash` rule wri
 
 **A declaration describes its own command only.**
 It attributes the operands of a unit whose head word is the declared bare basename, never a wrapper's inner command; the core does not attribute through a wrapper either, and §11 keeps the floor.
+For the same reason a declaration keyed by a wrapper itself (an indirection wrapper, a shell, or `eval`) is never read, since its arguments carry the command it runs, and config load reports one.
 
 **Provenance names the scope.**
 The blame source is `declared-global` or `declared-project`, the scope of the file whose entry won the shallow merge; a declaration's withdrawn claim is `retracted`, as a core guard's is.

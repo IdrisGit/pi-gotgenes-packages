@@ -44,7 +44,8 @@
  *
  * Measured 2026-10-16 with a recipe declaring nine read-only `git`
  * subcommands (`log`, `show`, `status`, `rev-list`, `rev-parse`, `ls-files`,
- * `grep`, `blame`, and `diff` unless `--output`) and `officecli: []`: the
+ * `grep`, `blame`, `diff`, with `--output` guarded on `git` itself) and
+ * `officecli: []`: the
  * recent share rises from 172/975 (17.6%) to 186/975 (19.1%), all-time from
  * 408/1549 to 429/1549. `git` stays the top blocker (156) because most asked
  * `git` units are writers (`add`, `commit`, `tag`), which no declaration

@@ -31,11 +31,8 @@
 
   "commandEffects": {
     "git": {
-      "subcommands": {
-        "log": "read",
-        "status": "read",
-        "diff": { "effects": "read", "unlessOption": ["--output"] }
-      }
+      "unlessOption": ["--output"],
+      "subcommands": { "log": "read", "status": "read", "diff": "read" }
     }
   },
 
