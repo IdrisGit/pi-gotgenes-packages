@@ -26,10 +26,7 @@ function createSession(finalText: string) {
       };
     }),
     prompt: vi.fn(async () => {
-      session.messages.push({
-        role: "assistant",
-        content: [{ type: "text", text: finalText }],
-      });
+      session.messages.push(assistantMessage(finalText));
     }),
     abort: vi.fn(),
     steer: vi.fn().mockResolvedValue(undefined),
@@ -103,8 +100,21 @@ function programTurns(
       emitTurnStart(listeners);
       emitTurnEnd(listeners, spec);
     }
-    session.messages.push({ role: "assistant", content: [{ type: "text", text: finalText }] });
+    session.messages.push(assistantMessage(finalText));
   });
+}
+
+/**
+ * An assistant message carrying one text block, as Pi appends it when a turn
+ * settles. A `stopReason` is added only when given: the package's own fixtures
+ * also model messages that carry none.
+ */
+function assistantMessage(text: string, stopReason?: string) {
+  return {
+    role: "assistant",
+    content: [{ type: "text", text }],
+    ...(stopReason === undefined ? {} : { stopReason }),
+  };
 }
 
 /**
@@ -117,9 +127,7 @@ function programTurns(
  */
 function providerErrorMessage(errorMessage?: string) {
   return {
-    role: "assistant",
-    content: [{ type: "text", text: "" }],
-    stopReason: "error",
+    ...assistantMessage("", "error"),
     ...(errorMessage === undefined ? {} : { errorMessage }),
   };
 }
@@ -518,7 +526,7 @@ describe("SubagentSession — runTurnLoop provider failures", () => {
   it("resolves normally when the last turn was aborted rather than errored", async () => {
     const { session, listeners } = createSession("unused");
     programMessages(session, listeners, [
-      { role: "assistant", content: [{ type: "text", text: "partial" }], stopReason: "aborted" },
+      assistantMessage("partial", "aborted"),
     ]);
     const { sub } = makeSubagentSession(session, { lifecycle });
     const result = await sub.runTurnLoop("go", {});
@@ -543,7 +551,7 @@ describe("SubagentSession — runTurnLoop provider failures", () => {
     const { session, listeners } = createSession("unused");
     programMessages(session, listeners, [
       providerErrorMessage("transient stream drop"),
-      { role: "assistant", content: [{ type: "text", text: "recovered" }], stopReason: "stop" },
+      assistantMessage("recovered", "stop"),
     ]);
     const { sub } = makeSubagentSession(session, { lifecycle });
     const result = await sub.runTurnLoop("go", {});
@@ -556,11 +564,7 @@ describe("SubagentSession — runTurnLoop provider failures", () => {
   // instead of reporting an earlier turn's work as the answer (#898).
   it("rejects when overflow recovery stripped the errored turn before the run settled", async () => {
     const { session, listeners } = createSession("unused");
-    session.messages.push({
-      role: "assistant",
-      content: [{ type: "text", text: "work from an earlier turn" }],
-      stopReason: "stop",
-    });
+    session.messages.push(assistantMessage("work from an earlier turn", "stop"));
     programStrippedFailure(session, listeners, "prompt is too long: 210000 tokens > 200000 maximum");
     const { sub } = makeSubagentSession(session, { lifecycle });
     await expect(sub.runTurnLoop("go", {})).rejects.toThrow("prompt is too long");
@@ -571,11 +575,7 @@ describe("SubagentSession — runTurnLoop provider failures", () => {
   // continued turn emits its own clean message_end and the run recovered.
   it("resolves when overflow recovery stripped the errored turn and the retry succeeded", async () => {
     const { session, listeners } = createSession("unused");
-    const recovered = {
-      role: "assistant",
-      content: [{ type: "text", text: "recovered" }],
-      stopReason: "stop",
-    };
+    const recovered = assistantMessage("recovered", "stop");
     session.prompt = vi.fn(async () => {
       emit(listeners, {
         type: "message_end",
@@ -620,11 +620,7 @@ describe("SubagentSession — resumeTurnLoop", () => {
 
   it("does not report an earlier turn's text as the resumed answer", async () => {
     const { session, listeners } = createSession("unused");
-    session.messages.push({
-      role: "assistant",
-      content: [{ type: "text", text: "work from the turn before the failure" }],
-      stopReason: "stop",
-    });
+    session.messages.push(assistantMessage("work from the turn before the failure", "stop"));
     programMessages(session, listeners, [providerErrorMessage("stream disconnected")]);
     const { sub } = makeSubagentSession(session);
     await expect(sub.resumeTurnLoop("Continue", {})).rejects.toThrow("stream disconnected");
@@ -632,11 +628,7 @@ describe("SubagentSession — resumeTurnLoop", () => {
 
   it("rejects when overflow recovery stripped the resumed turn's error", async () => {
     const { session, listeners } = createSession("unused");
-    session.messages.push({
-      role: "assistant",
-      content: [{ type: "text", text: "work from the turn before the failure" }],
-      stopReason: "stop",
-    });
+    session.messages.push(assistantMessage("work from the turn before the failure", "stop"));
     programStrippedFailure(session, listeners, "503 upstream unavailable");
     const { sub } = makeSubagentSession(session);
     await expect(sub.resumeTurnLoop("Continue", {})).rejects.toThrow("503 upstream unavailable");
@@ -663,11 +655,7 @@ describe("SubagentSession — resumeTurnLoop", () => {
   // session's lifetime rather than re-derived per call (#898).
   it("rejects when a stripped earlier failure is followed by a resume that runs no turn", async () => {
     const { session, listeners } = createSession("unused");
-    session.messages.push({
-      role: "assistant",
-      content: [{ type: "text", text: "work from an earlier turn" }],
-      stopReason: "stop",
-    });
+    session.messages.push(assistantMessage("work from an earlier turn", "stop"));
     programStrippedFailure(session, listeners, "prompt is too long: 210000 tokens > 200000 maximum");
     const { sub } = makeSubagentSession(session);
     await expect(sub.runTurnLoop("go", {})).rejects.toThrow("prompt is too long");
@@ -680,7 +668,7 @@ describe("SubagentSession — resumeTurnLoop", () => {
     const { session, listeners } = createSession("unused");
     session.messages.push(providerErrorMessage("429 rate limit exceeded"));
     programMessages(session, listeners, [
-      { role: "assistant", content: [{ type: "text", text: "the second answer" }], stopReason: "stop" },
+      assistantMessage("the second answer", "stop"),
     ]);
     const { sub } = makeSubagentSession(session);
     await expect(sub.resumeTurnLoop("Continue", {})).resolves.toEqual({ responseText: "the second answer", turnBudget: { used: 0, phase: "within" } });
@@ -761,11 +749,7 @@ describe("SubagentSession — a turn loop whose signal already fired", () => {
   describe("resumeTurnLoop", () => {
     it("takes no turn and does not report the previous run's answer", async () => {
       const { session } = createSession("full answer");
-      session.messages.push({
-        role: "assistant",
-        content: [{ type: "text", text: "the previous run's answer" }],
-        stopReason: "stop",
-      });
+      session.messages.push(assistantMessage("the previous run's answer", "stop"));
       const { sub } = makeSubagentSession(session);
       const result = await sub.resumeTurnLoop("Continue", { signal: firedSignal() });
       expect(session.prompt).not.toHaveBeenCalled();
@@ -797,10 +781,7 @@ describe("SubagentSession — delegate methods", () => {
   it("getConversation returns formatted text from session messages", () => {
     const { session } = createSession("X");
     session.messages.push({ role: "user", content: "Hello" });
-    session.messages.push({
-      role: "assistant",
-      content: [{ type: "text", text: "World" }],
-    });
+    session.messages.push(assistantMessage("World"));
     const { sub } = makeSubagentSession(session);
     const conv = sub.getConversation();
     expect(conv).toContain("[User]: Hello");
