@@ -134,7 +134,7 @@ An agent file can withhold one with [`locked`](./docs/configuration.md#locking-f
 
 A call with `resume` and `run_in_background: true` resumes the agent without waiting: it returns the agent ID at once, and you are notified when the resumed run finishes.
 Only the call's own flag does this; an agent file's `run_in_background` default does not apply to a resume.
-A background resume shows in the widget whatever mode the agent was spawned in, and a foreground resume streams its progress inline.
+A background resume shows in the widget regardless of the mode the agent was spawned in, and a foreground resume streams its progress inline.
 
 ### `get_subagent_result`
 
@@ -382,7 +382,7 @@ A new field is therefore a minor release; use a cast or a `Partial<>` for a test
 
 `resume(id, prompt, options?)` continues a settled agent's session, and is the one service call that waits: it resolves when the resumed run reaches a terminal state, carrying the terminal snapshot.
 A caller that does not need the outcome can ignore the promise.
-The resumed run is in the background, as a service spawn is by default: it shows in the widget, and the record's `isBackground` reads `true` whatever mode the agent was spawned in.
+The resumed run is in the background, as a service spawn is by default: it shows in the widget, and the record's `isBackground` reads `true` regardless of the mode the agent was spawned in.
 
 It never throws and never rejects.
 A resume that could not start resolves to `{ kind: "refused", reason }` instead, promptly — the checks are synchronous and no turn loop runs:

@@ -1049,7 +1049,7 @@ Release: independent
 - **Target:** `src/ui/agent-widget.ts` (`listBackgroundAgents`), the per-run object from [#1049], and `SubagentManager.startResume`.
 - **Hard dependency:** [#1049] — the run is what carries the mode.
 - **Design question the step must settle:** whether `SubagentRecord.isBackground` keeps its spawn-time meaning or reports the current run's mode, under decision 0005 (the snapshot is by value, and giving a field a new meaning needs the same care as retyping it).
-- **Outcome:** a record running a background resume shows in the widget whatever mode it was spawned in (pinned).
+- **Outcome:** a record running a background resume shows in the widget regardless of the mode it was spawned in (pinned).
 - **Commit type:** `fix!:` (the public `SubagentRecord.isBackground` changed meaning).
 - **Impact 3 / Risk 2 / Priority 12.**
 
