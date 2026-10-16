@@ -1566,7 +1566,11 @@ describe("SubagentManager", () => {
 
       it("runs the resumed turn loop under the record's own lever", async () => {
         const { factory, stub } = createSessionFactory();
-        stub.resumeTurnLoop.mockResolvedValue(turnLoopResult({ responseText: "second" }));
+        let loopSignal: AbortSignal | undefined;
+        stub.resumeTurnLoop.mockImplementation((_prompt: string, opts: { signal?: AbortSignal }) => {
+          loopSignal = opts.signal;
+          return Promise.resolve(turnLoopResult({ responseText: "second" }));
+        });
         ({ manager } = createManager({ createSubagentSession: factory }));
         const id = spawnBg(manager);
         await manager.getRecord(id)!.promise;
@@ -1576,7 +1580,8 @@ describe("SubagentManager", () => {
 
         // The caller's signal is wired through the record's abort(), so the loop
         // runs under the one lever abort(id) can also pull.
-        expect(stub.resumeTurnLoop).toHaveBeenCalledWith("continue", expect.objectContaining({ signal: manager.getRecord(id)!.abortController.signal }));
+        expect(stub.resumeTurnLoop).toHaveBeenCalledWith("continue", expect.objectContaining({ signal: expect.any(AbortSignal) }));
+        expect(loopSignal).not.toBe(signal);
       });
 
       it("stops an in-flight resume when the caller aborts it by id", async () => {

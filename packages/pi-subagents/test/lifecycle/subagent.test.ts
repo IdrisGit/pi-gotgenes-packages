@@ -32,6 +32,26 @@ function defaultFactory(): SessionFactory {
 	return createFactory().factory;
 }
 
+/**
+ * Park a stub's turn loop (`runTurnLoop` or `resumeTurnLoop`) until its signal
+ * fires, recording what it was handed and whether that signal was already spent
+ * on arrival. The loop's signal is the run's lever as the session sees it.
+ */
+function parkLoopUntilSignalled(turnLoop: ReturnType<typeof createSubagentSessionStub>["runTurnLoop"]) {
+	const gate = Promise.withResolvers<TurnLoopResult>();
+	const loop: { signal?: AbortSignal; abortedAtEntry?: boolean; signalled: boolean } = { signalled: false };
+	turnLoop.mockImplementation((_prompt: string, { signal }: { signal?: AbortSignal }) => {
+		loop.signal = signal;
+		loop.abortedAtEntry = signal?.aborted;
+		signal?.addEventListener("abort", () => {
+			loop.signalled = true;
+			gate.resolve(turnLoopResult({ responseText: "partial answer" }));
+		});
+		return gate.promise;
+	});
+	return loop;
+}
+
 interface MakeSubagentOptions extends SubagentStateInit {
 	id?: string;
 	type?: SubagentType;
@@ -340,10 +360,17 @@ describe("Subagent — abort", () => {
 		expect(record.status).toBe("queued");
 	});
 
-	it("fires the AbortController, marks stopped, and returns true when running", () => {
-		const record = makeSubagent({ status: "running" });
+	it("signals the running turn loop, marks stopped, and returns true when running", async () => {
+		const { factory, stub } = createFactory();
+		const loop = parkLoopUntilSignalled(stub.runTurnLoop);
+		const record = createRunnableAgent({ createSubagentSession: factory });
+		const run = record.run();
+		await vi.waitFor(() => expect(stub.runTurnLoop).toHaveBeenCalled());
+
 		expect(record.abort()).toBe(true);
-		expect(record.abortController.signal.aborted).toBe(true);
+		await run;
+
+		expect(loop.signalled).toBe(true);
 		expect(record.status).toBe("stopped");
 	});
 
@@ -695,6 +722,22 @@ describe("Subagent.run() — happy path", () => {
 		await agent.run();
 		expect(agent.subagentSession).toBeDefined();
 		expect(agent.subagentSession!.session).toBeDefined();
+	});
+
+	it("releases the observer subscription after the run completes", async () => {
+		const session = createMockSession();
+		const stub = createSubagentSessionStub(session);
+		stub.runTurnLoop.mockImplementation(async () => {
+			session.emit({ type: "tool_execution_end" });
+			return turnLoopResult({ responseText: "done" });
+		});
+		const agent = createRunnableAgent({ createSubagentSession: async () => toSubagentSession(stub) });
+		await agent.run();
+		expect(agent.toolUses).toBe(1);
+
+		// Events emitted after the run must not accumulate: the subscription is released.
+		session.emit({ type: "tool_execution_end" });
+		expect(agent.toolUses).toBe(1);
 	});
 
 	it("flushes pending steers when session is created", async () => {
@@ -1186,13 +1229,16 @@ describe("Subagent.run() — abort signal forwarding", () => {
 	it("wires parent signal so aborting it stops the agent", async () => {
 		const parentController = new AbortController();
 		const { factory, stub } = createFactory();
-		stub.runTurnLoop.mockImplementation(() => {
+		let loopSignal: AbortSignal | undefined;
+		stub.runTurnLoop.mockImplementation((_prompt: string, opts: TurnLoopOptions) => {
+			loopSignal = opts.signal;
 			parentController.abort();
 			return Promise.reject(new Error("aborted"));
 		});
 		const agent = createRunnableAgent({ createSubagentSession: factory, signal: parentController.signal });
 		await agent.run();
-		expect(agent.abortController.signal.aborted).toBe(true);
+		expect(loopSignal?.aborted).toBe(true);
+		expect(agent.status).toBe("stopped");
 	});
 });
 
@@ -1644,7 +1690,7 @@ describe("Subagent — ask-back", () => {
 
 		await agent.resume("The project one.");
 
-		expect(stub.resumeTurnLoop).toHaveBeenCalledWith("The project one.", expect.objectContaining({ signal: agent.abortController.signal }));
+		expect(stub.resumeTurnLoop).toHaveBeenCalledWith("The project one.", expect.objectContaining({ signal: expect.any(AbortSignal) }));
 		expect(agent.status).toBe("completed");
 		expect(agent.result).toBe("Used the project config. Done.");
 		// The question was answered, so it no longer stands.
@@ -1676,13 +1722,16 @@ describe("Subagent.resume() — happy path", () => {
 	it("hands resumeTurnLoop the record's own signal, not the caller's", async () => {
 		const { agent, stub } = createResumableAgent();
 		const callerSignal = new AbortController().signal;
+		let loopSignal: AbortSignal | undefined;
+		stub.resumeTurnLoop.mockImplementation((_prompt: string, { signal }: { signal?: AbortSignal }) => {
+			loopSignal = signal;
+			return Promise.resolve(turnLoopResult({ responseText: "resumed" }));
+		});
 		await agent.resume("continue", callerSignal);
-		expect(stub.resumeTurnLoop).toHaveBeenCalledOnce();
-		expect(stub.resumeTurnLoop.mock.calls[0][0]).toBe("continue");
+		expect(stub.resumeTurnLoop).toHaveBeenCalledExactlyOnceWith("continue", expect.objectContaining({ signal: expect.any(AbortSignal) }));
 		// The caller's signal is wired through abort(); the loop runs under the
 		// record's own lever, so abort(id) reaches it too.
-		expect(stub.resumeTurnLoop.mock.calls[0][1].signal).toBe(agent.abortController.signal);
-		expect(stub.resumeTurnLoop.mock.calls[0][1].signal).not.toBe(callerSignal);
+		expect(loopSignal).not.toBe(callerSignal);
 	});
 
 	it("resets transition state before resuming", async () => {
@@ -1720,28 +1769,9 @@ describe("Subagent.resume() — turn budget", () => {
 });
 
 describe("Subagent.resume() — cancellation", () => {
-	/**
-	 * Park the resumed turn loop until its signal fires, recording what it was
-	 * handed and whether that signal was already spent on arrival.
-	 */
-	function parkResumeUntilSignalled(stub: ReturnType<typeof createSubagentSessionStub>) {
-		const gate = Promise.withResolvers<TurnLoopResult>();
-		const loop: { signal?: AbortSignal; abortedAtEntry?: boolean; signalled: boolean } = { signalled: false };
-		stub.resumeTurnLoop.mockImplementation((_prompt: string, { signal }: { signal?: AbortSignal }) => {
-			loop.signal = signal;
-			loop.abortedAtEntry = signal?.aborted;
-			signal?.addEventListener("abort", () => {
-				loop.signalled = true;
-				gate.resolve(turnLoopResult({ responseText: "partial answer" }));
-			});
-			return gate.promise;
-		});
-		return loop;
-	}
-
 	it("aborting the record signals the resumed turn loop", async () => {
 		const { agent, stub } = createResumableAgent();
-		const loop = parkResumeUntilSignalled(stub);
+		const loop = parkLoopUntilSignalled(stub.resumeTurnLoop);
 
 		const resumed = agent.resume("continue");
 		expect(agent.abort()).toBe(true);
@@ -1754,7 +1784,7 @@ describe("Subagent.resume() — cancellation", () => {
 
 	it("a caller signal cancels through the record, which reads stopped", async () => {
 		const { agent, stub } = createResumableAgent();
-		const loop = parkResumeUntilSignalled(stub);
+		const loop = parkLoopUntilSignalled(stub.resumeTurnLoop);
 		const caller = new AbortController();
 
 		const resumed = agent.resume("continue", caller.signal);
@@ -1766,18 +1796,21 @@ describe("Subagent.resume() — cancellation", () => {
 	});
 
 	it("gives a resume that follows an aborted run a lever that is not already spent", async () => {
-		const { agent, stub } = createResumableAgent();
-		agent.markRunning(Date.now());
+		const { factory, stub } = createFactory();
+		const first = parkLoopUntilSignalled(stub.runTurnLoop);
+		const agent = createRunnableAgent({ createSubagentSession: factory });
+		const run = agent.run();
+		await vi.waitFor(() => expect(stub.runTurnLoop).toHaveBeenCalled());
 		agent.abort();
-		const spent = agent.abortController;
-		expect(spent.signal.aborted).toBe(true);
-		const loop = parkResumeUntilSignalled(stub);
+		await run;
+		expect(first.signal?.aborted).toBe(true);
+		const loop = parkLoopUntilSignalled(stub.resumeTurnLoop);
 
 		const resumed = agent.resume("continue");
 		expect(agent.abort()).toBe(true);
 		await resumed;
 
-		expect(loop.signal).not.toBe(spent.signal);
+		expect(loop.signal).not.toBe(first.signal);
 		expect(loop.abortedAtEntry).toBe(false);
 		expect(loop.signalled).toBe(true);
 	});
