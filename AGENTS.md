@@ -36,7 +36,7 @@ Facts about this environment that no model could infer.
 
 ### Shell
 
-Two prose tripwires are now `pi-permission-system` deny rules in `.pi/extensions/pi-permission-system/config.json` (`rg -r`, `git commit -F` from a heredoc); the reason string says what to do instead.
+Three prose tripwires are now `pi-permission-system` deny rules in `.pi/extensions/pi-permission-system/config.json` (`rg -r`, `git commit -F` from a heredoc, `cd packages/<pkg>`); the reason string says what to do instead.
 
 ### Tooling
 

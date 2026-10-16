@@ -81,5 +81,55 @@ The plan's `**Release:**` marker is `ship independently`, and the branch carries
 
 - The reviewer's WARNs were both settled before this stage, so nothing was left open at sync.
 
+## Stage: Final Retrospective (2026-10-16T03:35:08Z)
+
+### Session summary
+
+The root `/ship` fast-forward-merged the 11-commit branch, passed lint and `fallow dead-code` on the merged tree, and CI passed on the pushed tip.
+It closed #1049 and the folded-in [#949], each with its own summary, and released `pi-subagents-v23.4.1`; the worktree and branch are torn down.
+The retro read the peer transcript (planning, TDD, and sync in one session) and its three subagent transcripts.
+
+### Observations
+
+#### What went well
+
+- The planning spike changed the design before the gate, not after.
+  A disposable Vitest file against the real `Subagent` and `SubagentSession` measured four scenarios (S1 to S4) and found S2, an `abort(id)` during session creation that left a `stopped` record whose child ran a full turn loop.
+  That trigger is wider than [#949]'s own, and reading Pi's compiled `dist/` showed [#949]'s proposed `session.abort()` fix would be a no-op.
+- Each TDD step ran its killing mutations by scripted `perl` swaps against a `/tmp` backup, and every mutation killed exactly the class the plan predicted.
+- The pre-completion reviewer re-derived every abort path into a table and found the one untested path (a caller signal firing during `onStarted`); the delta round confirmed the pin.
+
+#### What caused friction (agent side)
+
+- `instruction-violation` (not caught by agent or user) — 57 of the peer's 110 `bash` calls began `cd packages/pi-subagents;`, 12 of them running `pnpm run`/`pnpm exec` from there, where `AGENTS.md` names `pnpm --filter` or `pnpm -C`.
+  Mixing package-relative and root-relative paths cost about two calls in planning (turns 13 to 17) while locating Pi's compiled `dist/` (`../../../pi`, then `../../node_modules/.pnpm` from the root).
+  This is the ninth retro to record the same violation (also #298, #336, #914, #955, #985, #1008, #1015, and #1048's assessor), and each time the prose rule was left as it stood.
+  Impact: about two wasted calls; no rework.
+- `instruction-violation` (self-identified at retro) — `/ship` ran `git merge --ff-only "$BRANCH" | tail -3` and chained the lint and fallow gates after it in the same call, so a rejected merge would have been masked and the gates would have run on the old tree.
+  The `git-workflow` skill's pipe rule and `/ship` step 4's "stop if not a fast-forward" both cover it; the `merge-base --is-ancestor` prediction had already passed.
+  Impact: none.
+- `instruction-violation` (self-identified at retro) — the #949 close comment cited a truncated `e9251f40` that the pre-draft check had not resolved; only the three full SHAs were checked before drafting, where `/ship` step 9 says to verify the finished draft.
+  It is a prefix of a verified SHA, and `issue_close`'s own hex-token validation resolved it.
+  Impact: none.
+
+#### What caused friction (user side)
+
+- Nothing noted; the operator's only involvement was the design gate, and its two questions were answered without a bounce.
+
+### Diagnostic details
+
+- **Model-performance correlation** — Planning and TDD ran on `anthropic/claude-opus-5-5`, sync on `anthropic/claude-sonnet-5-5`, and ship and retro at the root on `anthropic/claude-opus-5-5`.
+  The `tidy-first-assessor` and both `pre-completion-reviewer` rounds ran on `anthropic/claude-sonnet-5-5` (read from their transcripts), and their output was judgment-grade: the assessor caught the two tests that could not be a mechanical swap, and the reviewer's path table found the `onStarted` gap.
+  No mismatch.
+- **Feedback-loop gap analysis** — TDD ran the affected Vitest files and `pnpm run check` after each step, which caught step 4's test type error (`makeWorkspace()` needs an argument) one call after it was written.
+  No gap.
+
+### Changes made
+
+1. `.pi/extensions/pi-permission-system/config.json`: a `cd packages/*` bash deny rule whose reason names `pnpm --filter`/`pnpm -C` and root-relative paths.
+   Verified live in the retro session: `cd packages/pi-nocd; pwd` is denied with the reason, and `pnpm -C packages/pi-nocd exec pwd` runs.
+2. `.pi/skills/upstream-watch/SKILL.md`: the scratch-tree recipe enters the package with one absolute `cd /tmp/pp-upstream-<version>/packages/<pkg>`, which the new rule does not match.
+3. `AGENTS.md`: the `### Shell` section counts three prose tripwires turned deny rules and names `cd packages/<pkg>`.
+
 [#1050]: https://github.com/gotgenes/pi-packages/issues/1050
 [#1051]: https://github.com/gotgenes/pi-packages/issues/1051
