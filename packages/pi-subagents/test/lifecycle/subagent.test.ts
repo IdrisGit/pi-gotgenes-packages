@@ -386,64 +386,60 @@ describe("Subagent — abort", () => {
 
 
 
-/** Create a Subagent for completeRun / failRun tests. */
-function createCompletionAgent(overrides?: { observer?: SubagentLifecycleObserver }) {
-	return {
-		record: makeSubagent({
-			status: "running",
-			execution: makeStubExecution({ observer: overrides?.observer }),
-		}),
-	};
+/**
+ * Run an agent to a terminal state: its turn loop settles with `result`, or
+ * rejects with `error` when one is given.
+ */
+async function runToTerminal(
+	outcome: { result?: Partial<TurnLoopResult>; error?: Error },
+	observer?: SubagentLifecycleObserver,
+) {
+	const { factory, stub } = createFactory();
+	if (outcome.error) stub.runTurnLoop.mockRejectedValue(outcome.error);
+	else stub.runTurnLoop.mockResolvedValue(turnLoopResult(outcome.result));
+	const record = createRunnableAgent({ createSubagentSession: factory, observer });
+	await record.run();
+	return record;
 }
 
-describe("Subagent — completeRun", () => {
-	it("transitions to completed for a normal result", () => {
-		const { record } = createCompletionAgent();
-		record.completeRun(turnLoopResult());
+describe("Subagent — a run that settles", () => {
+	it("transitions to completed for a normal result", async () => {
+		const record = await runToTerminal({});
 		expect(record.status).toBe("completed");
 		expect(record.result).toBe("done");
 	});
 
-	it("transitions to aborted, a terminal error, when the harness exhausted the turn budget", () => {
-		const { record } = createCompletionAgent();
-		record.completeRun(turnLoopResult({ turnBudget: EXHAUSTED }));
+	it("transitions to aborted, a terminal error, when the harness exhausted the turn budget", async () => {
+		const record = await runToTerminal({ result: { turnBudget: EXHAUSTED } });
 		expect(record.status).toBe("aborted");
 		expect(record.isTerminalError()).toBe(true);
 	});
 
-	it("transitions to completed, not a terminal error, when the run wrapped up at its turn limit", () => {
-		const { record } = createCompletionAgent();
-		record.completeRun(turnLoopResult({ turnBudget: WARNED }));
+	it("transitions to completed, not a terminal error, when the run wrapped up at its turn limit", async () => {
+		const record = await runToTerminal({ result: { turnBudget: WARNED } });
 		expect(record.status).toBe("completed");
 		expect(record.isTerminalError()).toBe(false);
 	});
 
-	it("fires observer.onRunFinished on completion", () => {
+	it("fires observer.onRunFinished on completion", async () => {
 		const onRunFinished = vi.fn();
-		const { record } = createCompletionAgent({ observer: { onRunFinished } });
-		record.completeRun(turnLoopResult());
-		expect(onRunFinished).toHaveBeenCalledOnce();
-		expect(onRunFinished).toHaveBeenCalledWith(record);
+		const record = await runToTerminal({}, { onRunFinished });
+		expect(onRunFinished).toHaveBeenCalledExactlyOnceWith(record);
 	});
-
 });
 
-describe("Subagent — failRun", () => {
-	it("transitions to error state", () => {
-		const { record } = createCompletionAgent();
-		record.failRun(new Error("boom"));
+describe("Subagent — a run that fails", () => {
+	it("transitions to error state", async () => {
+		const record = await runToTerminal({ error: new Error("boom") });
 		expect(record.status).toBe("error");
 		expect(record.error).toBe("boom");
 	});
 
-	it("fires observer.onRunFinished on failure", () => {
+	it("fires observer.onRunFinished on failure", async () => {
 		const onRunFinished = vi.fn();
-		const { record } = createCompletionAgent({ observer: { onRunFinished } });
-		record.failRun(new Error("boom"));
-		expect(onRunFinished).toHaveBeenCalledOnce();
-		expect(onRunFinished).toHaveBeenCalledWith(record);
+		const record = await runToTerminal({ error: new Error("boom") }, { onRunFinished });
+		expect(onRunFinished).toHaveBeenCalledExactlyOnceWith(record);
 	});
-
 });
 
 describe("Subagent — stopQueued", () => {
@@ -1306,19 +1302,35 @@ describe("Subagent — the ask-back recorder", () => {
 		expect(agent.pendingQuestion).toBe("second");
 	});
 
-	it("drops a recorded question when the run fails, so no carrier invites a resume", () => {
-		const agent = makeSubagent({ pendingQuestion: "Which config wins?" });
+	it("drops a recorded question when the run fails, so no carrier invites a resume", async () => {
+		const { factory, stub } = createSpyFactory();
+		stub.runTurnLoop.mockImplementation(() => {
+			factory.mock.calls[0][0].askParent?.("Which config wins?");
+			return Promise.reject(new Error("boom"));
+		});
+		const agent = createRunnableAgent({ createSubagentSession: factory });
 
-		agent.failRun(new Error("boom"));
+		await agent.run();
 
+		expect(agent.status).toBe("error");
 		expect(agent.pendingQuestion).toBeUndefined();
 	});
 
-	it("drops a recorded question when a resumed run fails", () => {
-		const agent = makeSubagent({ pendingQuestion: "Which config wins?" });
+	// The question is asked from inside the resumed loop: a resume rewinds the
+	// record and clears any question seeded before it, so a seeded one would pass
+	// without the failure path dropping anything.
+	it("drops a recorded question when a resumed run fails", async () => {
+		const { factory, stub } = createSpyFactory();
+		const agent = createRunnableAgent({ createSubagentSession: factory });
+		await agent.run();
+		stub.resumeTurnLoop.mockImplementation(() => {
+			factory.mock.calls[0][0].askParent?.("Which config wins?");
+			return Promise.reject(new Error("boom"));
+		});
 
-		agent.failResume(new Error("boom"));
+		await agent.resume("continue");
 
+		expect(agent.status).toBe("error");
 		expect(agent.pendingQuestion).toBeUndefined();
 	});
 });
