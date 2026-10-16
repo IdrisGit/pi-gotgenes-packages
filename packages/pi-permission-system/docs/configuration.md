@@ -68,6 +68,11 @@ This clamp is deny-preserving and, like `yoloMode`, applied at composition; when
     "exec_command": { "commandArgument": "cmd", "workdirArgument": "workdir" }
   },
 
+  // What your own bash commands do to the paths they are given
+  "commandEffects": {
+    "git": { "subcommands": { "log": "read", "status": "read" } }
+  },
+
   // Ordered names of registered live-authority chain links (empty = none)
   "authorizerChain": [],
 
@@ -1001,16 +1006,17 @@ Since rules are last-match-wins, the explicit entry always has the final say, an
 
 A tool's identity establishes its direction, and on the bash surface a redirect operator or a known read-only command word can establish it too:
 
-| Access                                                                     | Consults                  |
-| -------------------------------------------------------------------------- | ------------------------- |
-| `read`, `grep`, `find`, `ls`                                               | the `_read` surface only  |
-| `write`                                                                    | the `_write` surface only |
-| `edit`                                                                     | both, most-restrictive    |
-| An MCP tool or extension tool                                              | both, most-restrictive    |
-| A bash output redirect destination (`>`, `>>`, `>\|`, `&>`)                | the `_write` surface only |
-| A bash input redirect destination (`<`, `<<<`)                             | the `_read` surface only  |
-| An argument of a [pure-reader core](#the-pure-reader-command-core) command | the `_read` surface only  |
-| Any other bash path token                                                  | both, most-restrictive    |
+| Access                                                                               | Consults                  |
+| ------------------------------------------------------------------------------------ | ------------------------- |
+| `read`, `grep`, `find`, `ls`                                                         | the `_read` surface only  |
+| `write`                                                                              | the `_write` surface only |
+| `edit`                                                                               | both, most-restrictive    |
+| An MCP tool or extension tool                                                        | both, most-restrictive    |
+| A bash output redirect destination (`>`, `>>`, `>\|`, `&>`)                          | the `_write` surface only |
+| A bash input redirect destination (`<`, `<<<`)                                       | the `_read` surface only  |
+| An argument of a [pure-reader core](#the-pure-reader-command-core) command           | the `_read` surface only  |
+| An argument of a command you [declared](#declaring-your-own-commands-commandeffects) | what you declared         |
+| Any other bash path token                                                            | both, most-restrictive    |
 
 An access whose direction cannot be established consults **both** surfaces and takes the more restrictive answer.
 That is deliberate: an unproven access is never treated as the narrower one.
@@ -1079,6 +1085,85 @@ Two more shapes withdraw the claim:
 
 - An argument whose value only the shell decides (`"$range"`, `$f`, `$(cmd)`, `-*`, `-\i`, `{-i,-n}`), wherever it sits, because it could arrive as `-i` or as the script itself.
 - A `sed` script where GNU and BSD would read different commands: a delimiter inside a bracket expression (`s/[/]/x/`), or an `-e` after the first positional.
+
+#### Declaring your own commands: `commandEffects`
+
+The core stays small on purpose, so most of the readers you use every day (`git log`, `git diff`, `strings`) are outside it, and their path arguments consult both surfaces.
+`commandEffects` lets you say what your own commands do:
+
+```jsonc
+{
+  "commandEffects": {
+    "git": {
+      "subcommands": {
+        "log": "read",
+        "show": "read",
+        "status": "read",
+        "diff": { "effects": "read", "unlessOption": ["--output"] },
+        "remote": { "subcommands": { "show": "read" } }
+      }
+    },
+    "officecli": { "effects": [] }
+  }
+}
+```
+
+A declaration only chooses which surface answers for the paths a command names, exactly as a core word does.
+It pays off once a read grant exists for it to reach, which is the recipe to put beside it:
+
+```jsonc
+{
+  "permission": {
+    "external_directory_read": { "*": "allow" },
+    "external_directory_write": { "*": "ask" }
+  }
+}
+```
+
+With both, `git log ~/other/repo/file` reads without a prompt, and `git push`, which nobody declared, still asks.
+
+Each key is a command's **bare basename**, and each entry has up to three fields:
+
+| Field          | Meaning                                                                                                                                          |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `effects`      | `"read"`, `"write"`, or an array of them. `[]` says the command's arguments touch no file at all.                                                |
+| `unlessOption` | Options that withdraw the declaration when they appear anywhere in the command, so its paths consult both surfaces again.                        |
+| `subcommands`  | Entries for the word that follows, keyed by that exact word. A value is a nested entry or, as a shorthand, just its `effects` (`"log": "read"`). |
+
+The rules are fail-closed wherever a rule had to choose:
+
+- **Undeclared is unknown.**
+  A command with no entry, a subcommand with no entry, and an entry with no `effects` all consult both surfaces.
+- **Subcommands match exactly, as the next word.**
+  `git -C ~/other log` and `git --no-pager log` are not `git log`: when an entry declares subcommands and the word in that position is an option or a computed word (`git $SUB`), the subcommand that will run cannot be told, so its paths consult both surfaces.
+- **A path-qualified command is a different program.**
+  `./git log` and `/usr/bin/git log` match no declaration.
+- **An `unlessOption` stem withdraws the declaration, and never substitutes another.**
+  It is matched the way the core's own withdrawing options are: a single letter after one dash (`-o`) anywhere in a cluster or with its value attached (`-so`, `-ofile`), a long option (`--output`) bare, with `=value`, or abbreviated (`--out`), and a longer single-dash option (`-exec`) as written or with a suffix (`-execdir`).
+  A word whose value only the shell decides withdraws it too when it may arrive beginning with `-`.
+  Stems met on the way down to a subcommand all apply to it.
+- **`["read", "write"]` consults both surfaces**, as an unproven path does; `"write"` alone consults only `_write`, which mostly makes a prompt more honest.
+
+`effects: []` is for a tool whose arguments look like paths and are not.
+`officecli set data.xlsx /Sheet1/B1` names a cell, but `/Sheet1/B1` is shaped exactly like `/etc/passwd`, and no rule can tell them apart.
+Declaring `officecli` with no effects withdraws its arguments from `path` and `external_directory` entirely, so a `path` deny no longer reaches them either: that is the claim you are making about your own tool.
+The `bash` surface still governs the command, including a `bash` rule written against the absolute spelling of one of its arguments.
+It is the strongest claim the key can make, so make it only for a tool none of whose options reads or writes a file: `curl` looks like a candidate, but `curl -d @~/.ssh/id_rsa` reads the file it names and `curl -o` writes one.
+A redirect on the command (`officecli … > ~/out.xlsx`) and a command nested inside it (`officecli $(cat ~/list)`) keep their own directions.
+
+Three things a declaration cannot do:
+
+- **Override the core.**
+  The [pure-reader core](#the-pure-reader-command-core) answers first, including when one of its own guards withdraws a claim, so a declaration for `sed`, `sort`, `find`, or `cat` is never read.
+  The extension warns about such an entry when it loads the config.
+- **Reach through a wrapper.**
+  A declaration describes a command's own arguments: `xargs git log ~/x` keeps the [indirection-wrapper floor](#declarations-and-privilege), and `~/x` consults both surfaces there.
+- **Come from an agent.**
+  Only the global and project config files declare effects; agent frontmatter cannot, since an agent declaring its own tools read-only would be granting itself relief.
+
+Declarations **shallow-merge by command** across global → project, as `shellTools` does: a project entry replaces a colliding command whole and never drops a global one.
+An untrusted project's declarations are not loaded.
+The review log records which file classified a path, as `effectSource: "declared-global"` or `"declared-project"`.
 
 #### Wrapper transparency
 
@@ -1167,7 +1252,7 @@ That rule also asks for every `env` that does run a command (`env cat x`), which
 ##### Declarations and privilege
 
 Neither exemption is extended by configuration.
-A user `commandEffects` declaration participates in effect classification but does **not** lift the floor.
+A [`commandEffects` declaration](#declaring-your-own-commands-commandeffects) participates in effect classification but does **not** lift the floor.
 The core's argument-independence is audited here; a claim about a wrapped command is not, and a wrong claim behind a wrapper fails open.
 
 `sudo` and `doas` are ordinary wrappers to the pure-reader rule, and never execution modifiers.

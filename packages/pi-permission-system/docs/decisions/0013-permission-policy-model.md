@@ -228,6 +228,32 @@ Like the execution-modifier clause, it carries no redirect refusal: it classifie
 The recorded reason is `no-command`, and it cannot coincide with the other two, which both need an inner command.
 Measured over the local review log from 2026-07: of 363 floored prompts, 37 more are relieved by this clause alone (`scripts/measure-wrapper-transparency.mjs`).
 
+### Amendment, 2026-10-16 — how `commandEffects` reads a command
+
+Implementing §7's user declarations ([#880]) settled five rules the section left open.
+
+**Subcommand descent is exact-word.**
+The word after the command, or after a matched subcommand, must be literal and equal a declared key.
+Where an entry declares subcommands and that word is an option or computed, the answer is unproven rather than the entry's own effects, because the subcommand that will run cannot be told: skipping dash words would read `git -C diff commit` (a directory named `diff`) as `git diff`.
+So `git -C ~/other log` stays unproven.
+The sentence in §10 that the arity table makes `git -C ~/other diff` resolve as `git diff` describes no mechanism the package has: `bash-arity.ts`'s `prefix` counts tokens and returns `git -C` for that command.
+Option-skipping descent needs a grammar of which options take a value, which is the structured-rule language [#804] owns; measured on the local review log, the option-led `git` forms are about a tenth of the `git` units in asks.
+
+**The core answers first, and its answer stands.**
+Declarations are consulted only for a command the core proves nothing about.
+A core retraction is not a gap a declaration may fill: a declaration's `unlessOption` is coarser than the core's proof, so `sed: {effects: "read", unlessOption: ["-i"]}` would turn a script with a `w` command back into a read.
+The `sed` and `sort` examples in §7 are therefore inert since [#924] admitted both words to the core, and config load reports a declaration keyed by a core word.
+
+**`[]` withdraws operands, and is a role rather than an effect.**
+A command declared with no effects has its own operands withdrawn from the `path` and `external_directory` surfaces, the [#797] case.
+The `bash` surface keeps their absolute argument spellings, so a `bash` rule written against an absolute path still matches the command, and a withdrawn token never folds with another command's attribution of the same path.
+
+**A declaration describes its own command only.**
+It attributes the operands of a unit whose head word is the declared bare basename, never a wrapper's inner command; the core does not attribute through a wrapper either, and §11 keeps the floor.
+
+**Provenance names the scope.**
+The blame source is `declared-global` or `declared-project`, the scope of the file whose entry won the shallow merge; a declaration's withdrawn claim is `retracted`, as a core guard's is.
+
 ## Context
 
 ### The reported gap
@@ -847,4 +873,6 @@ Issue [#620] carries the judgment slice the chain retains under §7.
 [#1043]: https://github.com/gotgenes/pi-packages/issues/1043
 [#1056]: https://github.com/gotgenes/pi-packages/issues/1056
 [#1064]: https://github.com/gotgenes/pi-packages/issues/1064
+[#797]: https://github.com/gotgenes/pi-packages/issues/797
+[#880]: https://github.com/gotgenes/pi-packages/issues/880
 [openai/codex#28732]: https://github.com/openai/codex/issues/28732

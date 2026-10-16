@@ -126,6 +126,7 @@ The `permission` object uses deep-shallow merge; scalar fields use simple replac
 - When adding a field, define it in `unifiedConfigSchema` (`config-schema.ts`, with `.meta({ description, markdownDescription })`) and regenerate the schema (`pnpm run gen:schema`); `UnifiedPermissionConfig` is inferred from it.
   Then carry it through `PermissionSystemExtensionConfig` (`extension-config.ts`) and merge it in `mergeUnifiedConfigs()` (`config-loader.ts` — a number goes in its "Number scalars" loop).
   A field on the runtime type but not the merge intermediate is silently dropped before runtime.
+  `commandEffects` is the one exception: its scope is provenance the review log reports, so `loadAndMergeConfigs` folds it per layer into `declaredCommandEffects` and `ConfigStore` holds it beside the runtime config, where `save()` cannot drop it.
   Omitting a field from `UnifiedPermissionConfig` that `normalizePermissionSystemConfig` reads is a **compile error** — `normalizePermissionSystemConfig` reads fields directly from the typed `UnifiedPermissionConfig` parameter, so `tsc` catches the gap immediately.
 - When a config example sets a policy for `write`, include the same policy for `edit` — both tools modify files and users expect them gated together.
 - `promptMaxRows` (24) and `promptFieldMaxWidth` (400) bound what an ask prompt renders; `resolveRenderBudget` (`src/presentation/dialog-renderer.ts`) owns their defaults, so neither belongs in `DEFAULT_EXTENSION_CONFIG`.
