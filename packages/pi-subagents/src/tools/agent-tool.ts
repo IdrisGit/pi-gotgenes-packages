@@ -7,7 +7,6 @@ import type { ParentSnapshot } from "#src/lifecycle/parent-snapshot";
 import type {
 	AgentSpawnConfig,
 	ResumeCallOptions,
-	ResumeOutcome,
 	ResumeRefusalReason,
 	ResumeStart,
 } from "#src/lifecycle/subagent-manager";
@@ -36,7 +35,6 @@ import { GLYPHS } from "#src/ui/glyphs";
 export interface AgentToolManager {
 	spawn: (snapshot: ParentSnapshot, type: string, prompt: string, opts: AgentSpawnConfig) => string;
 	spawnAndWait: (snapshot: ParentSnapshot, type: string, prompt: string, opts: Omit<AgentSpawnConfig, "background">) => Promise<Subagent>;
-	resume: (id: string, prompt: string, options: ResumeCallOptions) => Promise<ResumeOutcome>;
 	startResume: (id: string, prompt: string, options: ResumeCallOptions) => ResumeStart;
 	getRecord: (id: string) => Subagent | undefined;
 }
@@ -139,14 +137,15 @@ export class AgentTool {
 		// The manager owns whether a resume happens; this door owns only how the
 		// answer is worded. Resuming commits this call to delivering the outcome,
 		// so it claims it — nothing else announces what is already being returned.
-		const outcome = await this.manager.resume(id, prompt, {
+		const start = this.manager.startResume(id, prompt, {
 			signal: signal ?? new AbortController().signal,
 			claimOutcome: true,
 		});
-		if (outcome.kind === "refused") {
-			return textResult(resumeRefusalMessage(outcome.reason, id));
+		if (start.kind === "refused") {
+			return textResult(resumeRefusalMessage(start.reason, id));
 		}
-		const record = outcome.record;
+		const record = start.record;
+		await record.promise;
 		// Resume-return delivery edge: the resumed outcome is returned directly.
 		record.markConsumed();
 		return textResult(
