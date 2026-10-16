@@ -57,7 +57,11 @@ export interface SubagentRecord {
   type: string;
   description: string;
   status: SubagentStatus;
-  /** Scheduling and announcement mode, resolved once at the manager choke point. */
+  /**
+   * Whether the agent's current run is in the background: the run in flight, or
+   * the last one to end, and the spawn's mode before the first run starts. A
+   * resume chooses its own mode, so this can change after one.
+   */
   isBackground: boolean;
   result?: string;
   /** The question the agent ended its turn with, when it declared one. */

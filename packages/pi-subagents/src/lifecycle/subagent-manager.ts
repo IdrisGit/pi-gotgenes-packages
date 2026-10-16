@@ -406,7 +406,7 @@ export class SubagentManager {
    * words the answer. Delegates to Subagent.resume(), which owns the observer
    * subscription lifecycle.
    */
-  async resume(id: string, prompt: string, options: ResumeCallOptions = {}): Promise<ResumeOutcome> {
+  async resume(id: string, prompt: string, options: ResumeCallOptions): Promise<ResumeOutcome> {
     const start = this.startResume(id, prompt, options);
     if (start.kind === "refused") return start;
     await start.record.promise;
@@ -414,10 +414,10 @@ export class SubagentManager {
   }
 
   /**
-   * Start a resume without waiting for it: the door that returns before the
-   * resumed run ends. Refuses synchronously, for the same reasons `resume` does.
+   * Start a resume without waiting for it, handing back the record now running
+   * it. Refuses synchronously, for the same reasons `resume` does.
    */
-  startResume(id: string, prompt: string, options: ResumeCallOptions = {}): ResumeStart {
+  startResume(id: string, prompt: string, options: ResumeCallOptions): ResumeStart {
     const agent = this.agents.get(id);
     if (!agent) return { kind: "refused", reason: "unknown-agent" };
     const refusal = agent.resumeRefusal;
@@ -431,7 +431,7 @@ export class SubagentManager {
     else agent.releaseClaims();
     // Published as agent.promise, which always resolves; it rejects only for a
     // missing session, which resumeRefusal has already refused as no-session.
-    void agent.resume(prompt, { signal: options.signal });
+    void agent.resume(prompt, { background: options.background, signal: options.signal });
     return { kind: "started", record: agent };
   }
 

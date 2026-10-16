@@ -19,7 +19,7 @@ describe("createToolDeps", () => {
 
 		it("startResume starts a resume on a completed record", () => {
 			const { manager } = createToolDeps();
-			const start = manager.startResume("id-1", "prompt", {});
+			const start = manager.startResume("id-1", "prompt", { background: true });
 			expect(start.kind).toBe("started");
 			expect(start.kind === "started" && start.record.status).toBe("completed");
 		});

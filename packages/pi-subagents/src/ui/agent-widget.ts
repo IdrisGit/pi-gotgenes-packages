@@ -202,7 +202,9 @@ export class AgentWidget implements SubagentManagerObserver {
    * so funneling both `listAgents()` call sites through this accessor applies the
    * background predicate exactly once at the source.
    *
-   * The predicate reads the record's own resolved mode. It formerly re-derived
+   * The predicate reads the mode of the record's current run, so an agent
+   * resumed in the background shows whatever mode it was spawned in, and one
+   * resumed in the foreground streams inline instead. It formerly re-derived
    * it from a per-call display snapshot only the tool door ever built — so every
    * SDK-spawned agent was filtered out permanently (#724).
    */

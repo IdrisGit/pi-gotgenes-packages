@@ -213,7 +213,7 @@ const RUN_KIND_DRIVERS: readonly RunKindDriver[] = [
 		runToOutcome: async ({ observer, ...loop }) => {
 			const held = await heldWorkspaceAgent(observer);
 			held.stub.runTurnLoop.mockImplementation(outcomeLoop(loop, held.ask));
-			await held.agent.resume("continue");
+			await held.agent.resume("continue", { background: true });
 			return held;
 		},
 	},
@@ -224,12 +224,14 @@ function createResumableAgent(overrides?: {
 	observer?: SubagentLifecycleObserver;
 	session?: ReturnType<typeof createMockSession>;
 	stub?: ReturnType<typeof createSubagentSessionStub>;
+	isBackground?: boolean;
 }) {
 	const session = overrides?.session ?? createMockSession();
 	const stub = overrides?.stub ?? createSubagentSessionStub(session);
 	const agent = makeSubagent({
 		id: "resume-1",
 		description: "resume test",
+		isBackground: overrides?.isBackground,
 		execution: makeStubExecution({ observer: overrides?.observer ?? {} }),
 		status: "completed",
 		result: "first",
@@ -853,7 +855,7 @@ describe("Subagent", () => {
 		it("holds the addendum a failed resume's disposal reported", async () => {
 			const { agent, stub } = await heldWorkspaceAgent();
 			stub.runTurnLoop.mockRejectedValue(new Error("resume exploded"));
-			await agent.resume("the answer");
+			await agent.resume("the answer", { background: true });
 			expect(agent.status).toBe("error");
 			expect(agent.workspaceNotice).toBe(ADDENDUM);
 		});
@@ -954,7 +956,7 @@ describe("Subagent", () => {
 		it("does not announce for a failed resume, whose own notification carries it", async () => {
 			const { agent, stub, onWorkspaceNotice } = await heldAgentWithObserver();
 			stub.runTurnLoop.mockRejectedValue(new Error("resume exploded"));
-			await agent.resume("the answer");
+			await agent.resume("the answer", { background: true });
 			expect(agent.workspaceNotice).toBe(ADDENDUM);
 			expect(onWorkspaceNotice).not.toHaveBeenCalled();
 		});
@@ -1017,7 +1019,7 @@ describe("Subagent", () => {
 				return Promise.reject(new Error("boom"));
 			});
 
-			await agent.resume("continue");
+			await agent.resume("continue", { background: true });
 
 			expect(agent.status).toBe("error");
 			expect(agent.pendingQuestion).toBeUndefined();
@@ -1123,7 +1125,7 @@ describe("Subagent", () => {
 				});
 				await agent.run();
 				agent.claim();
-				await agent.resume("keep going");
+				await agent.resume("keep going", { background: true });
 
 				notify("The premise is wrong.");
 
@@ -1283,7 +1285,7 @@ describe("Subagent", () => {
 				execution: makeStubExecution({
 					createSubagentSession: async () => toSubagentSession(stub),
 					// Resumes the moment the run settles, before the waiter continues.
-					observer: { onRunFinished: (a, kind) => { if (kind === "initial") void a.resume("continue"); } },
+					observer: { onRunFinished: (a, kind) => { if (kind === "initial") void a.resume("continue", { background: true }); } },
 				}),
 			});
 			agent.start();
@@ -1334,7 +1336,7 @@ describe("Subagent", () => {
 			stub.runTurnLoop.mockResolvedValue(turnLoopResult({ responseText: "Used the project config. Done." }));
 			expect(agent.pendingQuestion).toBe("Which config?");
 
-			await agent.resume("The project one.");
+			await agent.resume("The project one.", { background: true });
 
 			expect(stub.runTurnLoop).toHaveBeenLastCalledWith("The project one.", expect.objectContaining({ signal: expect.any(AbortSignal) }));
 			expect(agent.status).toBe("completed");
@@ -1350,7 +1352,7 @@ describe("Subagent", () => {
 				return Promise.resolve(turnLoopResult({ responseText: "Thanks." }));
 			});
 
-			await agent.resume("The project one.");
+			await agent.resume("The project one.", { background: true });
 
 			expect(agent.pendingQuestion).toBe("And the fallback?");
 			expect(agent.result).toBe("Thanks.");
@@ -1423,7 +1425,7 @@ describe("Subagent", () => {
 					return Promise.resolve(turnLoopResult({ responseText: "" }));
 				});
 
-				await agent.resume("continue", { signal: firedSignal() });
+				await agent.resume("continue", { background: true, signal: firedSignal() });
 
 				expect(abortedAtEntry).toBe(true);
 				expect(agent.status).toBe("stopped");
@@ -1572,7 +1574,7 @@ describe("Subagent", () => {
 			await agent.run();
 			expect(agent.status).toBe("completed");
 
-			await agent.resume("and now the other half");
+			await agent.resume("and now the other half", { background: true });
 
 			expect(agent.status).toBe("error");
 			expect(agent.error).toBe("503 upstream unavailable");
@@ -1783,7 +1785,7 @@ describe("Subagent", () => {
 					return Promise.resolve(turnLoopResult({ responseText: "Partway.", turnBudget: WARNED }));
 				});
 
-				await agent.resume("The project one.");
+				await agent.resume("The project one.", { background: true });
 
 				expect(agent.status).toBe("completed");
 				expect(workspace.dispose).not.toHaveBeenCalled();
@@ -1861,13 +1863,45 @@ describe("Subagent", () => {
 		});
 	});
 
+	describe("a run's mode", () => {
+		it.for([true, false])("a record with no run yet reads the spawn's mode (background: %s)", (isBackground) => {
+			expect(makeSubagent({ isBackground }).isBackground).toBe(isBackground);
+		});
+
+		it.for([true, false])("the initial run takes the spawn's mode (background: %s)", async (isBackground) => {
+			const agent = createRunnableAgent({ isBackground });
+			await agent.run();
+			expect(agent.isBackground).toBe(isBackground);
+		});
+
+		it.for([
+			{ spawned: "foreground", background: true },
+			{ spawned: "background", background: false },
+		])(
+			"a resume of an agent spawned in the $spawned takes the mode it starts with (background: $background)",
+			async ({ background }) => {
+				const { agent, stub } = createResumableAgent({ isBackground: !background });
+				const turnLoop = Promise.withResolvers<TurnLoopResult>();
+				stub.runTurnLoop.mockReturnValue(turnLoop.promise);
+
+				const resumed = agent.resume("continue", { background });
+				expect(agent.isBackground).toBe(background);
+
+				turnLoop.resolve(turnLoopResult({ responseText: "done" }));
+				await resumed;
+				expect(agent.status).toBe("completed");
+				expect(agent.isBackground).toBe(background);
+			},
+		);
+	});
+
 	describe("a resume", () => {
 		describe("disposing a held workspace", () => {
 			it("disposes when the resumed child answers without asking again", async () => {
 				const { agent, workspace, stub } = await heldWorkspaceAgent();
 				stub.runTurnLoop.mockResolvedValue(turnLoopResult({ responseText: "Used the project config. Done." }));
 
-				await agent.resume("The project one.");
+				await agent.resume("The project one.", { background: true });
 
 				expect(workspace.dispose).toHaveBeenCalledWith({ status: "completed", description: "run test" });
 				expect(agent.result).toBe(`Used the project config. Done.${ADDENDUM}`);
@@ -1880,7 +1914,7 @@ describe("Subagent", () => {
 					return Promise.resolve(turnLoopResult({ responseText: "Thanks." }));
 				});
 
-				await agent.resume("The project one.");
+				await agent.resume("The project one.", { background: true });
 
 				expect(workspace.dispose).not.toHaveBeenCalled();
 				expect(agent.pendingQuestion).toBe("And the fallback?");
@@ -1893,7 +1927,7 @@ describe("Subagent", () => {
 					return Promise.resolve(turnLoopResult({ responseText: "Partway.", turnBudget: EXHAUSTED }));
 				});
 
-				await agent.resume("The project one.");
+				await agent.resume("The project one.", { background: true });
 
 				expect(agent.status).toBe("aborted");
 				expect(workspace.dispose).toHaveBeenCalledWith({ status: "aborted", description: "run test" });
@@ -1904,7 +1938,7 @@ describe("Subagent", () => {
 				const { agent, workspace, stub } = await heldWorkspaceAgent();
 				stub.runTurnLoop.mockRejectedValue(new Error("resume exploded"));
 
-				await expect(agent.resume("The project one.")).resolves.toBeUndefined();
+				await expect(agent.resume("The project one.", { background: true })).resolves.toBeUndefined();
 
 				expect(agent.status).toBe("error");
 				expect(workspace.dispose).toHaveBeenCalledWith({ status: "error", description: "run test" });
@@ -1953,7 +1987,7 @@ describe("Subagent", () => {
 			it("transitions to completed and sets result from the resume response", async () => {
 				const { agent, stub } = createResumableAgent();
 				stub.runTurnLoop.mockResolvedValue(turnLoopResult({ responseText: "resumed" }));
-				await agent.resume("continue");
+				await agent.resume("continue", { background: true });
 				expect(agent.status).toBe("completed");
 				expect(agent.result).toBe("resumed");
 			});
@@ -1966,7 +2000,7 @@ describe("Subagent", () => {
 					loopSignal = signal;
 					return Promise.resolve(turnLoopResult({ responseText: "resumed" }));
 				});
-				await agent.resume("continue", { signal: callerSignal });
+				await agent.resume("continue", { background: true, signal: callerSignal });
 				expect(stub.runTurnLoop).toHaveBeenCalledExactlyOnceWith("continue", expect.objectContaining({ signal: expect.any(AbortSignal) }));
 				// The caller's signal is wired through abort(); the loop runs under the
 				// record's own lever, so abort(id) reaches it too.
@@ -1975,7 +2009,7 @@ describe("Subagent", () => {
 
 			it("resets transition state before resuming", async () => {
 				const { agent } = createResumableAgent();
-				await agent.resume("continue");
+				await agent.resume("continue", { background: true });
 				expect(agent.error).toBeUndefined();
 			});
 		});
@@ -1989,7 +2023,7 @@ describe("Subagent", () => {
 					onTurnBudget?.(fresh);
 					return gate.promise;
 				});
-				const resumed = agent.resume("continue");
+				const resumed = agent.resume("continue", { background: true });
 				await vi.waitFor(() => expect(stub.runTurnLoop).toHaveBeenCalled());
 				expect(agent.turnBudget).toEqual(fresh);
 				gate.resolve(turnLoopResult({ turnBudget: fresh }));
@@ -2000,7 +2034,7 @@ describe("Subagent", () => {
 				const onRunFinished = vi.fn();
 				const { agent, stub } = createResumableAgent({ observer: { onRunFinished } });
 				stub.runTurnLoop.mockResolvedValue(turnLoopResult({ responseText: "partial", turnBudget: EXHAUSTED }));
-				await agent.resume("continue");
+				await agent.resume("continue", { background: true });
 				expect(agent.status).toBe("aborted");
 				expect(agent.result).toBe("partial");
 				expect(onRunFinished).toHaveBeenCalledExactlyOnceWith(agent, "resume");
@@ -2012,7 +2046,7 @@ describe("Subagent", () => {
 				const { agent, stub } = createResumableAgent();
 				const loop = parkLoopUntilSignalled(stub.runTurnLoop);
 
-				const resumed = agent.resume("continue");
+				const resumed = agent.resume("continue", { background: true });
 				expect(agent.abort()).toBe(true);
 				await resumed;
 
@@ -2026,7 +2060,7 @@ describe("Subagent", () => {
 				const loop = parkLoopUntilSignalled(stub.runTurnLoop);
 				const caller = new AbortController();
 
-				const resumed = agent.resume("continue", { signal: caller.signal });
+				const resumed = agent.resume("continue", { background: true, signal: caller.signal });
 				caller.abort();
 				await resumed;
 
@@ -2045,7 +2079,7 @@ describe("Subagent", () => {
 				expect(first.signal?.aborted).toBe(true);
 				const loop = parkLoopUntilSignalled(stub.runTurnLoop);
 
-				const resumed = agent.resume("continue");
+				const resumed = agent.resume("continue", { background: true });
 				expect(agent.abort()).toBe(true);
 				await resumed;
 
@@ -2064,7 +2098,7 @@ describe("Subagent", () => {
 					return turnLoopResult({ responseText: "second" });
 				});
 				const { agent } = createResumableAgent({ session, stub });
-				await agent.resume("more");
+				await agent.resume("more", { background: true });
 				expect(agent.lifetimeUsage).toEqual({ input: 70, output: 30, cacheWrite: 5 });
 				expect(agent.compactionCount).toBe(1);
 			});
@@ -2081,14 +2115,14 @@ describe("Subagent", () => {
 					return turnLoopResult({ responseText: "second" });
 				});
 				const { agent } = createResumableAgent({ observer, session, stub });
-				await agent.resume("more");
+				await agent.resume("more", { background: true });
 				expect(seen).toEqual([{ reason: "threshold", tokensBefore: 123 }]);
 			});
 
 			it("releases the observer subscription after resume completes", async () => {
 				const session = createMockSession();
 				const { agent } = createResumableAgent({ session });
-				await agent.resume("more");
+				await agent.resume("more", { background: true });
 				// Events emitted after resume must not accumulate — subscription released.
 				session.emit({ type: "tool_execution_end" });
 				expect(agent.toolUses).toBe(0);
@@ -2100,7 +2134,7 @@ describe("Subagent", () => {
 					seen.push({ status: agent.status, completedAt: agent.completedAt });
 				const { agent } = createResumableAgent({ observer: { onRunStarted } });
 
-				await agent.resume("continue");
+				await agent.resume("continue", { background: true });
 
 				// After the rewind, not before it: a subscriber reading the record must see
 				// the run that just started, not the outcome of the one it replaced.
@@ -2117,7 +2151,7 @@ describe("Subagent", () => {
 				const gate = Promise.withResolvers<TurnLoopResult>();
 				stub.runTurnLoop.mockReturnValue(gate.promise);
 
-				const resumed = agent.resume("continue");
+				const resumed = agent.resume("continue", { background: true });
 
 				expect(agent.status).toBe("running");
 				expect(onRunStarted).toHaveBeenCalledExactlyOnceWith(agent, "resume");
@@ -2132,7 +2166,7 @@ describe("Subagent", () => {
 				stub.runTurnLoop.mockRejectedValue(new Error("resume exploded"));
 				const { agent } = createResumableAgent({ observer: { onRunStarted }, stub });
 
-				await agent.resume("continue");
+				await agent.resume("continue", { background: true });
 
 				expect(onRunStarted).toHaveBeenCalledExactlyOnceWith(agent, "resume");
 			});
@@ -2140,7 +2174,7 @@ describe("Subagent", () => {
 			it("fires observer.onRunFinished once the resume completes", async () => {
 				const onRunFinished = vi.fn();
 				const { agent } = createResumableAgent({ observer: { onRunFinished } });
-				await agent.resume("continue");
+				await agent.resume("continue", { background: true });
 				expect(onRunFinished).toHaveBeenCalledExactlyOnceWith(agent, "resume");
 				expect(agent.status).toBe("completed");
 			});
@@ -2150,7 +2184,7 @@ describe("Subagent", () => {
 				const stub = createSubagentSessionStub();
 				stub.runTurnLoop.mockRejectedValue(new Error("resume exploded"));
 				const { agent } = createResumableAgent({ observer: { onRunFinished }, stub });
-				await agent.resume("continue");
+				await agent.resume("continue", { background: true });
 				expect(onRunFinished).toHaveBeenCalledExactlyOnceWith(agent, "resume");
 				expect(agent.status).toBe("error");
 			});
@@ -2161,7 +2195,7 @@ describe("Subagent", () => {
 				const stub = createSubagentSessionStub();
 				stub.runTurnLoop.mockRejectedValue(new Error("resume exploded"));
 				const { agent } = createResumableAgent({ stub });
-				await agent.resume("more");
+				await agent.resume("more", { background: true });
 				expect(agent.status).toBe("error");
 				expect(agent.error).toBe("resume exploded");
 			});
@@ -2171,14 +2205,14 @@ describe("Subagent", () => {
 				const stub = createSubagentSessionStub(session);
 				stub.runTurnLoop.mockRejectedValue(new Error("boom"));
 				const { agent } = createResumableAgent({ session, stub });
-				await agent.resume("more");
+				await agent.resume("more", { background: true });
 				session.emit({ type: "tool_execution_end" });
 				expect(agent.toolUses).toBe(0);
 			});
 
 			it("throws when no session exists", async () => {
 				const agent = makeSubagent();
-				await expect(agent.resume("more")).rejects.toThrow(/missing session/);
+				await expect(agent.resume("more", { background: true })).rejects.toThrow(/missing session/);
 			});
 		});
 
@@ -2191,7 +2225,7 @@ describe("Subagent", () => {
 				const { promise: resuming, resolve: finishResume } = Promise.withResolvers<TurnLoopResult>();
 				stub.runTurnLoop.mockReturnValue(resuming);
 
-				const returned = agent.resume("continue");
+				const returned = agent.resume("continue", { background: true });
 
 				// The getter must track the live resume, not the settled first-run handle.
 				expect(agent.promise).not.toBe(firstRun);

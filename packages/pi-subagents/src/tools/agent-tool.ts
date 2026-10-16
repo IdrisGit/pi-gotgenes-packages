@@ -138,6 +138,7 @@ export class AgentTool {
 		// answer is worded. Resuming commits this call to delivering the outcome,
 		// so it claims it — nothing else announces what is already being returned.
 		const start = this.manager.startResume(id, prompt, {
+			background: false,
 			signal: signal ?? new AbortController().signal,
 			claimOutcome: true,
 		});
@@ -162,7 +163,7 @@ export class AgentTool {
 	 * wired, as for a background spawn.
 	 */
 	private resumeInBackground(id: string, prompt: string, config: ResolvedSpawnConfig) {
-		const start = this.manager.startResume(id, prompt, {});
+		const start = this.manager.startResume(id, prompt, { background: true });
 		if (start.kind === "refused") {
 			return textResult(resumeRefusalMessage(start.reason, id));
 		}

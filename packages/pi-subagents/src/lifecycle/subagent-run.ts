@@ -26,6 +26,8 @@ export class SubagentRun {
 	 */
 	constructor(
 		readonly kind: RunKind,
+		/** Whether this run is in the background: nothing in the parent's turn waits on it. */
+		readonly inBackground: boolean,
 		callerSignal: AbortSignal | undefined,
 		onCallerAbort: () => void,
 	) {

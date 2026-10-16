@@ -116,6 +116,11 @@ export interface SubagentExecution {
 
 /** What one resume of a subagent is started with. */
 export interface ResumeRunOptions {
+	/**
+	 * Whether the resume runs in the background. The front door that starts it
+	 * decides, so a resume need not run in the mode the agent was spawned in.
+	 */
+	background: boolean;
 	/** Cancels the resumed run through its own lever, ending it like `abort()` does. */
 	signal?: AbortSignal;
 }
@@ -125,7 +130,7 @@ export interface SubagentInit {
 	id: string;
 	type: SubagentType;
 	description: string;
-	/** The mode SubagentManager resolved for this spawn; drives scheduling and announcement. */
+	/** The mode SubagentManager resolved for this spawn: the initial run's, and whether it queues. */
 	isBackground: boolean;
 
 	/** Execution machinery — always supplied; construct-complete, no test fallbacks. */
@@ -140,12 +145,8 @@ export class Subagent {
 	readonly id: string;
 	readonly type: SubagentType;
 	readonly description: string;
-	/**
-	 * Whether this agent runs in the background. Resolved once at the manager
-	 * choke point, so a consumer asks the record rather than re-deriving it from
-	 * a per-call display snapshot only the tool door ever built (#724).
-	 */
-	readonly isBackground: boolean;
+	/** The spawn's resolved mode, which the initial run takes. */
+	private readonly spawnedInBackground: boolean;
 
 	// Lifecycle status and metrics — owned by a private value object; getters and
 	// mutation methods below delegate to it one line.
@@ -183,6 +184,19 @@ export class Subagent {
 
 	/** The run in flight, or the last one to end; undefined until the first run starts. */
 	private currentRun?: SubagentRun;
+
+	/**
+	 * Whether this agent's current run is in the background: the run in flight,
+	 * or the last one to end, and the spawn's mode before the first run starts.
+	 *
+	 * Mode is a fact about a run, not the agent, so a resume can change it. The
+	 * record answers rather than a consumer re-deriving it from a per-call
+	 * display snapshot only the tool door ever built (#724).
+	 */
+	get isBackground(): boolean {
+		return this.currentRun?.inBackground ?? this.spawnedInBackground;
+	}
+
 	private _promise?: Promise<void>;
 	/** Handle on the agent's current run — the initial run, or the live resume that replaced it. */
 	get promise(): Promise<void> | undefined { return this._promise; }
@@ -328,7 +342,7 @@ export class Subagent {
 		this.id = init.id;
 		this.type = init.type;
 		this.description = init.description;
-		this.isBackground = init.isBackground;
+		this.spawnedInBackground = init.isBackground;
 
 		// Lifecycle status and metrics — fresh queued state unless one is supplied
 		this.state = init.state ?? new SubagentState();
@@ -352,7 +366,7 @@ export class Subagent {
 	 * captured internally).
 	 */
 	async run(): Promise<void> {
-		const run = new SubagentRun("initial", this.execution.signal, () => this.abort());
+		const run = new SubagentRun("initial", this.spawnedInBackground, this.execution.signal, () => this.abort());
 		this.currentRun = run;
 		this.markRunning(Date.now());
 		this.execution.observer?.onRunStarted?.(this, run.kind);
@@ -533,7 +547,7 @@ export class Subagent {
 	 * turn loop, so both levers stop the same run and both leave the record
 	 * reading `stopped`.
 	 */
-	resume(prompt: string, options: ResumeRunOptions = {}): Promise<void> {
+	resume(prompt: string, options: ResumeRunOptions): Promise<void> {
 		const subagentSession = this.subagentSession;
 		if (!subagentSession) {
 			// Rejection, not a throw: this method is not async, and a synchronous
@@ -554,7 +568,7 @@ export class Subagent {
 	private async continueSession(session: SubagentSession, prompt: string, options: ResumeRunOptions): Promise<void> {
 		// After resetForResume, which releases the previous run's handles.
 		this.resetForResume(Date.now());
-		const run = new SubagentRun("resume", options.signal, () => this.abort());
+		const run = new SubagentRun("resume", options.background, options.signal, () => this.abort());
 		this.currentRun = run;
 		// Cancelled before it started: the turn loop takes no turn on a fired lever,
 		// so the resume ends like one aborted mid-run.
