@@ -1231,29 +1231,29 @@ describe("SubagentManager", () => {
         await manager.dispose();
       });
 
-      it("passes defaultMaxTurns and wrapUpTurns from getRunConfig to runTurnLoop", async () => {
+      it("passes defaultMaxTurns and wrapUpTurns from getRunConfig to the session's turn limits", async () => {
         const getRunConfig = vi.fn(() => ({ defaultMaxTurns: 10, wrapUpTurns: 3, midRunUpdates: true }));
-        const { factory, stub } = createSessionFactory();
+        const { factory } = createSessionFactory();
         ({ manager } = createManager({ getRunConfig, createSubagentSession: factory }));
 
         const id = spawnBg(manager);
         await manager.getRecord(id)!.promise;
 
-        const turnOpts = stub.runTurnLoop.mock.calls[0][1];
-        expect(turnOpts.defaultMaxTurns).toBe(10);
-        expect(turnOpts.wrapUpTurns).toBe(3);
+        expect(factory).toHaveBeenCalledWith(
+          expect.objectContaining({ turnLimits: { maxTurns: undefined, defaultMaxTurns: 10, wrapUpTurns: 3 } }),
+        );
       });
 
-      it("omits defaultMaxTurns and wrapUpTurns from runTurnLoop when no getRunConfig is provided", async () => {
-        const { factory, stub } = createSessionFactory();
+      it("leaves defaultMaxTurns and wrapUpTurns unset when no getRunConfig is provided", async () => {
+        const { factory } = createSessionFactory();
         ({ manager } = createManager({ createSubagentSession: factory }));
 
         const id = spawnBg(manager);
         await manager.getRecord(id)!.promise;
 
-        const turnOpts = stub.runTurnLoop.mock.calls[0][1];
-        expect(turnOpts.defaultMaxTurns).toBeUndefined();
-        expect(turnOpts.wrapUpTurns).toBeUndefined();
+        expect(factory).toHaveBeenCalledWith(
+          expect.objectContaining({ turnLimits: { maxTurns: undefined, defaultMaxTurns: undefined, wrapUpTurns: undefined } }),
+        );
       });
     });
 

@@ -1,6 +1,7 @@
 import type { AgentSession } from "@earendil-works/pi-coding-agent";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { SubagentSession } from "#src/lifecycle/subagent-session";
+import { resolveTurnLimits, type TurnLimitRequest } from "#src/lifecycle/turn-limits";
 import { createChildLifecycleMock, createFactorySession } from "#test/helpers/subagent-session-io";
 import { childCompletedEvent } from "#test/helpers/turn-loop-result";
 
@@ -163,7 +164,7 @@ function makeSubagentSession(
     sessionId: string;
     sessionDir: string;
     agentName: string;
-    agentMaxTurns: number | undefined;
+    turnLimits: TurnLimitRequest;
     parentContext: string | undefined;
     lifecycle: ReturnType<typeof createChildLifecycleMock>;
   }>,
@@ -175,7 +176,7 @@ function makeSubagentSession(
     sessionId: metaOverrides?.sessionId ?? "child-session-default",
     sessionDir: metaOverrides?.sessionDir ?? "/sessions/dir",
     agentName: metaOverrides?.agentName ?? "Explore",
-    agentMaxTurns: metaOverrides?.agentMaxTurns,
+    turnLimits: resolveTurnLimits(metaOverrides?.turnLimits, undefined),
     parentContext: metaOverrides?.parentContext,
     lifecycle,
   });
@@ -262,8 +263,8 @@ describe("SubagentSession — runTurnLoop turn budget", () => {
     it("stops the run after the ceiling turn when that turn ran tools", async () => {
       const { session } = createSession("done");
       programTurns(session, 5);
-      const { sub } = makeSubagentSession(session);
-      const result = await sub.runTurnLoop("go", { maxTurns: 3, wrapUpTurns: 1 });
+      const { sub } = makeSubagentSession(session, { turnLimits: { maxTurns: 3, wrapUpTurns: 1 } });
+      const result = await sub.runTurnLoop("go", {});
       expect(session.abort).toHaveBeenCalledOnce();
       expect(result.turnBudget).toEqual({ maxTurns: 3, used: 3, phase: "exhausted" });
     });
@@ -271,8 +272,8 @@ describe("SubagentSession — runTurnLoop turn budget", () => {
     it("lets a final answer on the ceiling turn end the run without a stop", async () => {
       const { session } = createSession("done");
       programTurns(session, [{}, {}, { stopReason: "stop", toolResults: 0 }]);
-      const { sub } = makeSubagentSession(session);
-      const result = await sub.runTurnLoop("go", { maxTurns: 3, wrapUpTurns: 1 });
+      const { sub } = makeSubagentSession(session, { turnLimits: { maxTurns: 3, wrapUpTurns: 1 } });
+      const result = await sub.runTurnLoop("go", {});
       expect(session.abort).not.toHaveBeenCalled();
       expect(result.turnBudget).toEqual({ maxTurns: 3, used: 3, phase: "warned" });
     });
@@ -287,8 +288,8 @@ describe("SubagentSession — runTurnLoop turn budget", () => {
         emitTurnEnd(session, { stopReason: "stop", toolResults: 0 });
         emitTurnStart(session);
       });
-      const { sub } = makeSubagentSession(session);
-      const result = await sub.runTurnLoop("go", { maxTurns: 2, wrapUpTurns: 1 });
+      const { sub } = makeSubagentSession(session, { turnLimits: { maxTurns: 2, wrapUpTurns: 1 } });
+      const result = await sub.runTurnLoop("go", {});
       expect(session.abort).toHaveBeenCalledOnce();
       expect(result.turnBudget).toEqual({ maxTurns: 2, used: 2, phase: "exhausted" });
     });
@@ -296,8 +297,8 @@ describe("SubagentSession — runTurnLoop turn budget", () => {
     it("does not count a turn whose response errored", async () => {
       const { session } = createSession("done");
       programTurns(session, [{}, { stopReason: "error", toolResults: 0 }, { stopReason: "stop", toolResults: 0 }]);
-      const { sub } = makeSubagentSession(session);
-      const result = await sub.runTurnLoop("go", { maxTurns: 5, wrapUpTurns: 1 });
+      const { sub } = makeSubagentSession(session, { turnLimits: { maxTurns: 5, wrapUpTurns: 1 } });
+      const result = await sub.runTurnLoop("go", {});
       expect(result.turnBudget).toEqual({ maxTurns: 5, used: 2, phase: "within" });
     });
   });
@@ -306,8 +307,8 @@ describe("SubagentSession — runTurnLoop turn budget", () => {
     it("warns with a context-only message once wrapUpTurns turns remain, never through a steer", async () => {
       const { session } = createSession("done");
       programTurns(session, [{}, {}, {}, { stopReason: "stop", toolResults: 0 }]);
-      const { sub } = makeSubagentSession(session);
-      const result = await sub.runTurnLoop("go", { maxTurns: 5, wrapUpTurns: 2 });
+      const { sub } = makeSubagentSession(session, { turnLimits: { maxTurns: 5, wrapUpTurns: 2 } });
+      const result = await sub.runTurnLoop("go", {});
       expect(session.sendCustomMessage).toHaveBeenCalledOnce();
       expect(session.sendCustomMessage).toHaveBeenCalledWith(
         {
@@ -330,8 +331,8 @@ describe("SubagentSession — runTurnLoop turn budget", () => {
         emitTurnStart(session);
         emitTurnEnd(session, { stopReason: "stop", toolResults: 0 });
       });
-      const { sub } = makeSubagentSession(session);
-      const result = await sub.runTurnLoop("go", { maxTurns: 2, wrapUpTurns: 2 });
+      const { sub } = makeSubagentSession(session, { turnLimits: { maxTurns: 2, wrapUpTurns: 2 } });
+      const result = await sub.runTurnLoop("go", {});
       expect(session.sendCustomMessage).toHaveBeenCalledWith(
         expect.objectContaining({ content: expect.stringContaining("you have 2 turns left") }),
         { triggerTurn: false },
@@ -344,9 +345,9 @@ describe("SubagentSession — runTurnLoop turn budget", () => {
     it("reports the budget before the first turn and after each turn", async () => {
       const { session } = createSession("done");
       programTurns(session, 2);
-      const { sub } = makeSubagentSession(session);
+      const { sub } = makeSubagentSession(session, { turnLimits: { maxTurns: 4, wrapUpTurns: 2 } });
       const reports: unknown[] = [];
-      await sub.runTurnLoop("go", { maxTurns: 4, wrapUpTurns: 2, onTurnBudget: (budget) => reports.push(budget) });
+      await sub.runTurnLoop("go", { onTurnBudget: (budget) => reports.push(budget) });
       expect(reports).toEqual([
         { maxTurns: 4, used: 0, phase: "within" },
         { maxTurns: 4, used: 1, phase: "within" },
@@ -362,32 +363,6 @@ describe("SubagentSession — runTurnLoop turn budget", () => {
       expect(result.turnBudget).toEqual({ used: 4, phase: "within" });
       expect(session.sendCustomMessage).not.toHaveBeenCalled();
       expect(session.abort).not.toHaveBeenCalled();
-    });
-  });
-
-  describe("limit precedence", () => {
-    it("per-call maxTurns takes precedence over agentMaxTurns and defaultMaxTurns", async () => {
-      const { session } = createSession("done");
-      programTurns(session, 1);
-      const { sub } = makeSubagentSession(session, { agentMaxTurns: 7 });
-      const result = await sub.runTurnLoop("go", { maxTurns: 3, defaultMaxTurns: 9 });
-      expect(result.turnBudget.maxTurns).toBe(3);
-    });
-
-    it("falls back to agentMaxTurns when no per-call maxTurns is set", async () => {
-      const { session } = createSession("done");
-      programTurns(session, 1);
-      const { sub } = makeSubagentSession(session, { agentMaxTurns: 7 });
-      const result = await sub.runTurnLoop("go", { defaultMaxTurns: 9 });
-      expect(result.turnBudget.maxTurns).toBe(7);
-    });
-
-    it("falls back to defaultMaxTurns when neither per-call nor agentMaxTurns is set", async () => {
-      const { session } = createSession("done");
-      programTurns(session, 1);
-      const { sub } = makeSubagentSession(session);
-      const result = await sub.runTurnLoop("go", { defaultMaxTurns: 9 });
-      expect(result.turnBudget.maxTurns).toBe(9);
     });
   });
 });
@@ -433,8 +408,8 @@ describe("SubagentSession — runTurnLoop lifecycle events", () => {
   it("emits completed with the run's turn budget and no turn-limit flags", async () => {
     const { session } = createSession("done");
     programTurns(session, 3);
-    const { sub } = makeSubagentSession(session, { sessionDir: "/d", agentName: "Explore", lifecycle });
-    await sub.runTurnLoop("go", { maxTurns: 5, wrapUpTurns: 2 });
+    const { sub } = makeSubagentSession(session, { sessionDir: "/d", agentName: "Explore", lifecycle, turnLimits: { maxTurns: 5, wrapUpTurns: 2 } });
+    await sub.runTurnLoop("go", {});
     expect(lifecycle.completed).toHaveBeenCalledWith({
       sessionDir: "/d",
       agentName: "Explore",
@@ -661,8 +636,8 @@ describe("SubagentSession — resumeTurnLoop turn budget", () => {
   it("gives a resume a fresh budget with the original run's ceiling", async () => {
     const { session } = createSession("done");
     programTurns(session, 5);
-    const { sub } = makeSubagentSession(session);
-    const first = await sub.runTurnLoop("go", { maxTurns: 3, wrapUpTurns: 1 });
+    const { sub } = makeSubagentSession(session, { turnLimits: { maxTurns: 3, wrapUpTurns: 1 } });
+    const first = await sub.runTurnLoop("go", {});
     expect(first.turnBudget.phase).toBe("exhausted");
 
     session.abort.mockClear();
@@ -677,8 +652,8 @@ describe("SubagentSession — resumeTurnLoop turn budget", () => {
   it("stops a resume at the original run's ceiling", async () => {
     const { session } = createSession("done");
     programTurns(session, 1);
-    const { sub } = makeSubagentSession(session);
-    await sub.runTurnLoop("go", { maxTurns: 2, wrapUpTurns: 1 });
+    const { sub } = makeSubagentSession(session, { turnLimits: { maxTurns: 2, wrapUpTurns: 1 } });
+    await sub.runTurnLoop("go", {});
 
     programTurns(session, 4);
     const resumed = await sub.resumeTurnLoop("Continue", {});
@@ -716,8 +691,8 @@ describe("SubagentSession — a turn loop whose signal already fired", () => {
 
     it("sends no budget warning when every turn is a wrap-up turn", async () => {
       const { session } = createSession("full answer");
-      const { sub } = makeSubagentSession(session);
-      await sub.runTurnLoop("go", { maxTurns: 2, wrapUpTurns: 2, signal: firedSignal() });
+      const { sub } = makeSubagentSession(session, { turnLimits: { maxTurns: 2, wrapUpTurns: 2 } });
+      await sub.runTurnLoop("go", { signal: firedSignal() });
       expect(session.sendCustomMessage).not.toHaveBeenCalled();
     });
   });

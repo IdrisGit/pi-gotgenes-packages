@@ -392,6 +392,11 @@ export class Subagent {
 				notifyParent: this.canSendUpdates(runConfig)
 					? (message) => { this.announceUpdate(message); }
 					: undefined,
+				turnLimits: {
+					maxTurns: this.execution.maxTurns,
+					defaultMaxTurns: runConfig?.defaultMaxTurns,
+					wrapUpTurns: runConfig?.wrapUpTurns,
+				},
 			});
 		} catch (err) {
 			// The factory disposed its own session on a post-creation failure.
@@ -407,9 +412,6 @@ export class Subagent {
 
 		try {
 			const result = await this.subagentSession.runTurnLoop(this.execution.prompt, {
-				maxTurns: this.execution.maxTurns,
-				defaultMaxTurns: runConfig?.defaultMaxTurns,
-				wrapUpTurns: runConfig?.wrapUpTurns,
 				signal: run.signal,
 				onTurnBudget: (budget) => { this.state.setTurnBudget(budget); },
 			});

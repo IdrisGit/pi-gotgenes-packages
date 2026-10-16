@@ -19,10 +19,10 @@ import {
 import type { ChildLifecyclePublisher } from "#src/lifecycle/child-lifecycle";
 import { emitChildSessionShutdown } from "#src/lifecycle/child-shutdown";
 import {
-  normalizeMaxTurns,
   type TurnBudget,
   type TurnBudgetAction,
   TurnBudgetTracker,
+  type TurnLimits,
   type TurnOutcome,
 } from "#src/lifecycle/turn-limits";
 import { getSessionContextPercent, type SessionStatsLike } from "#src/lifecycle/usage";
@@ -39,12 +39,6 @@ export interface TurnLoopResult {
 
 /** Per-call options for the initial run's turn loop. */
 export interface TurnLoopOptions {
-  /** Per-call max-turns override — highest precedence. */
-  maxTurns?: number;
-  /** Runtime-config fallback when neither per-call nor per-agent limit is set. */
-  defaultMaxTurns?: number;
-  /** Turns left when the child is warned about its budget (`wrapUpTurns` setting). */
-  wrapUpTurns?: number;
   signal?: AbortSignal;
   /** Receives the budget at the start and after every turn boundary that changes it. */
   onTurnBudget?: (budget: TurnBudget) => void;
@@ -66,8 +60,8 @@ export interface SubagentSessionMeta {
   /** Child session directory — carried on the completed event as transcript location. */
   sessionDir: string;
   agentName: string;
-  /** Per-agent max-turns from the resolved agent config — middle precedence. */
-  agentMaxTurns: number | undefined;
+  /** The limits every run of this session is held to, resolved at creation. */
+  turnLimits: TurnLimits;
   /** Parent context prepended to the run prompt, captured at spawn time. */
   parentContext: string | undefined;
   lifecycle: ChildLifecyclePublisher;
@@ -78,12 +72,6 @@ export interface SubagentSessionMeta {
  */
 export class SubagentSession {
   private disposed = false;
-
-  /**
-   * The limits the initial run resolved, kept so every resume runs under the
-   * same ceiling. Unlimited until the initial run starts.
-   */
-  private turnLimits: { maxTurns?: number; wrapUpTurns: number } = { wrapUpTurns: DEFAULT_WRAP_UP_TURNS };
 
   /**
    * How the session's last assistant turn ended, tracked for the session's
@@ -127,11 +115,7 @@ export class SubagentSession {
 
   /** Drive the initial run's turn loop; emits `completed` on success. */
   async runTurnLoop(prompt: string, opts: TurnLoopOptions): Promise<TurnLoopResult> {
-    this.turnLimits = {
-      maxTurns: normalizeMaxTurns(opts.maxTurns ?? this.meta.agentMaxTurns ?? opts.defaultMaxTurns),
-      wrapUpTurns: opts.wrapUpTurns ?? DEFAULT_WRAP_UP_TURNS,
-    };
-    const tracker = new TurnBudgetTracker(this.turnLimits);
+    const tracker = new TurnBudgetTracker(this.meta.turnLimits);
 
     // Prepend parent context if it was captured at spawn time.
     const effectivePrompt = this.meta.parentContext
@@ -228,11 +212,11 @@ export class SubagentSession {
   /**
    * Re-prompt the same session (resume); does not emit `completed`.
    *
-   * The resumed run gets a fresh budget under the initial run's limits: the
-   * parent asked for more work, and an exhausted run's remainder would be none.
+   * The resumed run gets a fresh budget under the session's limits: the parent
+   * asked for more work, and an exhausted run's remainder would be none.
    */
   async resumeTurnLoop(prompt: string, opts: ResumeTurnLoopOptions): Promise<TurnLoopResult> {
-    const tracker = new TurnBudgetTracker(this.turnLimits);
+    const tracker = new TurnBudgetTracker(this.meta.turnLimits);
     const responseText = await this.promptForAnswer(prompt, tracker, opts);
     return { responseText, turnBudget: tracker.budget };
   }
@@ -370,9 +354,6 @@ function readLastTurnFailure(session: AgentSession): string | undefined {
 
 /** The custom-message type the turn-budget warning is sent as. */
 const TURN_BUDGET_WARNING_TYPE = "subagents:turn-budget-warning";
-
-/** Wrap-up turns when the run config names none; matches the setting's default. */
-const DEFAULT_WRAP_UP_TURNS = 2;
 
 /** The warning a child reads with `remaining` turns left, this coming one included. */
 function budgetWarningText(remaining: number): string {

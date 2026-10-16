@@ -685,6 +685,7 @@ function createRunnableAgent(overrides?: {
 	baseCwd?: string;
 	workspaceProvider?: WorkspaceProvider;
 	isBackground?: boolean;
+	maxTurns?: number;
 }) {
 	const createSubagentSession = overrides?.createSubagentSession ?? defaultFactory();
 	const observer = overrides?.observer ?? {};
@@ -699,6 +700,7 @@ function createRunnableAgent(overrides?: {
 			snapshot: STUB_SNAPSHOT,
 			prompt: "do something",
 			getRunConfig: overrides?.getRunConfig,
+			maxTurns: overrides?.maxTurns,
 			parentSession: overrides?.parentSession,
 			signal: overrides?.signal,
 			baseCwd: overrides?.baseCwd ?? "/base",
@@ -1281,13 +1283,15 @@ describe("Subagent.run() — live turn budget", () => {
 });
 
 describe("Subagent.run() — RunConfig threading", () => {
-	it("passes defaultMaxTurns and wrapUpTurns to runTurnLoop", async () => {
-		const { factory, stub } = createFactory();
-		const agent = createRunnableAgent({ createSubagentSession: factory, getRunConfig: () => ({ defaultMaxTurns: 10, wrapUpTurns: 3, midRunUpdates: true }) });
+	it("hands the session factory the spawn's maxTurns with the run config's defaultMaxTurns and wrapUpTurns", async () => {
+		const { factory, params } = createFactory();
+		const agent = createRunnableAgent({
+			createSubagentSession: factory,
+			maxTurns: 6,
+			getRunConfig: () => ({ defaultMaxTurns: 10, wrapUpTurns: 3, midRunUpdates: true }),
+		});
 		await agent.run();
-		const turnOpts = stub.runTurnLoop.mock.calls[0][1];
-		expect(turnOpts.defaultMaxTurns).toBe(10);
-		expect(turnOpts.wrapUpTurns).toBe(3);
+		expect(params().turnLimits).toStrictEqual({ maxTurns: 6, defaultMaxTurns: 10, wrapUpTurns: 3 });
 	});
 });
 
@@ -2006,7 +2010,7 @@ describe("Subagent — provider failures reach the record", () => {
 				sessionId: "child-1",
 				sessionDir: "/sessions",
 				agentName: "Explore",
-				agentMaxTurns: undefined,
+				turnLimits: { wrapUpTurns: 2 },
 				parentContext: undefined,
 				lifecycle: createChildLifecycleMock(),
 			}),
