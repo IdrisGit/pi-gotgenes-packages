@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [23.4.2](https://github.com/gotgenes/pi-packages/compare/pi-subagents-v23.4.1...pi-subagents-v23.4.2) (2026-10-16)
+
+
+### Bug Fixes
+
+* **pi-subagents:** keep the workspace of a run that wraps up at its turn limit with a question ([083f8e8](https://github.com/gotgenes/pi-packages/commit/083f8e837451e55d2563074489fa5dc8cfefb52a)), closes [#1050](https://github.com/gotgenes/pi-packages/issues/1050)
+
 ## [23.4.1](https://github.com/gotgenes/pi-packages/compare/pi-subagents-v23.4.0...pi-subagents-v23.4.1) (2026-10-16)
 
 
