@@ -77,5 +77,20 @@ Pre-completion reviewer: WARN on the first round (two stale test comments, fixed
 - Reviewer warnings: two stale test comments naming `completeRun`/`failRun` (fixed); the `fix:` subject without `(#1050)` (accepted).
 
 [#1049]: https://github.com/gotgenes/pi-packages/issues/1049
+
+## Stage: Sync (worktree) (2026-10-16T05:38:52Z)
+
+### Session summary
+
+`pnpm run lint` and `pnpm fallow dead-code` both pass on the branch, ahead of the rebase onto local `main`.
+The plan's `**Release:**` marker is `ship independently`, and the branch carries one `fix:` commit, so `/ship` should cut a patch release for `@gotgenes/pi-subagents`; no follow-up issues were filed.
+
+**Peer session transcript:** `/Users/chris/.pi/agent/sessions/--Users-chris-development-pi-pi-packages-worktrees-issue-1050--/2026-10-16T03-52-29-402Z_01a142d7-01d9-76e2-982d-f549a2c54f4e.jsonl` — read with `read_session_file({ path: "<path>" })` for message-level verification at land/retro time.
+
+### Observations
+
+- The reviewer's only open finding is the accepted missing `(#1050)` suffix on the `fix:` subject (its body carries `Refs #1050`), so nothing was left open at sync.
+- Local `main` had moved by 18 commits, all in `pi-permission-system`; the rebase touches no pi-subagents path.
+
 [#1051]: https://github.com/gotgenes/pi-packages/issues/1051
 [#1058]: https://github.com/gotgenes/pi-packages/issues/1058
