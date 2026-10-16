@@ -42,6 +42,53 @@ The operator settled two design questions at the gate, and I posted a comment on
 
 - `src/presentation/prompt-payload.ts`: the local enum lists (`BASH_COMMAND_CONTEXTS`, and now the effect lists) use `satisfies readonly T[]`, which does not check exhaustiveness; exporting the value lists from `access-intent/effect.ts` was rated optional and skipped.
 
+## Stage: Implementation — TDD (2026-10-16T15:52:43Z)
+
+### Session summary
+
+I landed all four planned steps: `refactor(pi-permission-system): carry a deciding path as a prompt request fact`, the two `fix:` commits (review-log blame, then the dialog's `why` line), and the docs commit.
+The first review returned WARN, so I added a `test:` commit and a `docs:` commit (`cross-extension-api.md`).
+The `pi-permission-system` suite went from 6316 to 6344 tests (+28).
+
+### Observations
+
+- **Plan deviation (wording).**
+  A retraction's clause reads "an option withdrew the claim", not "the read claim".
+  A `commandEffects` guard can withdraw a declared write or `[]`, not only the core's read.
+  The `fix:` commit body records this.
+- **Plan deviation (placement).**
+  The `why` line sits right after the value line in `coreFacts`, so it reads under the path or command it explains.
+- **Plan deviation (metric).**
+  The health-metric table has only a fixed baseline and a target column, so the delivered `effectSource` count (1) went into the roadmap step's `Landed:` note rather than the table.
+- **Mutation finding.**
+  The plan predicted that making the reader return `decidingPath: null` would also kill `permission-ui-prompt.test.ts`'s verbatim-core test.
+  It does not: `buildUiPrompt` passes `request` through without the reader.
+  That test pins the bus pass-through, not the reader.
+- **Pins.**
+  Every killing mutation the plan named turned its tests red.
+  Three extra mutations also turned red:
+  - the reader's path-type check;
+  - giving the tool `path.ts` gate a deciding effect;
+  - dropping `renderReviewLogFacts` from the runner's shared `logContext`, plus a variant affecting only the session arm.
+- **Process slip.**
+  I batched a mutation `Edit` with the vitest run and the `cp` of the green file, so the green copy may have captured the mutation.
+  `runner.ts` had no uncommitted edits, so I restored it from HEAD and re-ran the mutation on its own.
+  Earlier, a hand-written mutation for the dialog's evidence arm came out as unparsable code, and I restored it from the green copy before reading any result.
+- **Edit friction.**
+  An `Edit` whose `oldText` spans `§` or `—` failed twice while I was removing the gates' log-context comment.
+  A line-anchored Python script did the removal, as the `edit-tool` skill recommends.
+- **Pre-completion reviewer: WARN, then PASS on the delta.**
+  The round 1 WARNs were:
+  - `cross-extension-api.md` omitted `decidingPath` (fixed);
+  - the runner's session and yolo arms were unpinned (fixed with an `it.each` over all three arms);
+  - the "not breaking" classification holds for readers of `PromptRequestFacts` but is a compile-time break for code that constructs one.
+- **Reviewer warning carried to `/ship`.**
+  `pi-permission-model-judge`'s test fixture (`test/fixtures/permission-details.ts`) builds a `PromptPayload` literal against its pinned `27.0.0` devDependency.
+  It already lacks `matchedSpelling` and will also need `decidingPath` when that pin bumps.
+  Adding either field now would be an excess-property error against `27.0.0`, so I left it.
+  At ship time, decide whether to file a follow-up issue or leave it to the bump.
+  The reviewer also noted that the `matchedSpelling` precedent first shipped inside a major release (`40.0.0`), so it shows the commit type was acceptable, not that the release was a minor.
+
 [#880]: https://github.com/gotgenes/pi-packages/issues/880
 [#952]: https://github.com/gotgenes/pi-packages/issues/952
 [#1062]: https://github.com/gotgenes/pi-packages/issues/1062
