@@ -146,8 +146,13 @@ export class AgentWidget implements SubagentManagerObserver {
 
   // ---- SubagentManagerObserver: react to lifecycle, self-drive the timer ----
 
-  /** A run started, initial or resumed — render, which (re-)arms the animation loop. */
-  onSubagentRunStarted(_record: Subagent, _kind: RunKind) {
+  /**
+   * A run started, initial or resumed — render, which (re-)arms the animation loop.
+   * The record's previous run, if any, has finished lingering or never will, so
+   * forget its age: this run's finished row lingers from zero like the first's.
+   */
+  onSubagentRunStarted(record: Subagent, _kind: RunKind) {
+    this.finishedTurnAge.delete(record.id);
     this.update();
   }
 
