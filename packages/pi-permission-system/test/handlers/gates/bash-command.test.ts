@@ -1366,6 +1366,65 @@ describe("resolveBashCommandCheck: a computed word in a wrapper's options", () =
   });
 });
 
+describe("resolveBashCommandCheck: an env naming no command", () => {
+  beforeAll(async () => {
+    await warmBashParser();
+  });
+
+  const permissive: Record<string, PermissionState> = { "*": "allow" };
+
+  describe("resolves by its own rule", () => {
+    it.each([
+      ["env", "env"],
+      ["env | rg '^PI_'", "env"],
+      ["env -0", "env -0"],
+      ["env -i", "env -i"],
+      ["env -u FOO", "env -u FOO"],
+      ["env -", "env -"],
+      ["env FOO=1", "env FOO=1"],
+      ["env > /tmp/x", "env"],
+    ])("allows %s under a permissive policy", (command, unit) => {
+      const result = decide(permissive, command);
+      expect(result.state).toBe("allow");
+      expect(result.matchedPattern).toBe("*");
+      expect(result.floorExemption).toBe("no-command");
+      expect(result.command).toBe(unit);
+      expect(result.floor).toBeUndefined();
+    });
+  });
+
+  describe("keeps the floor", () => {
+    it.each([
+      ["env $X", "a computed word names the command"],
+      ['env "$X"', "a computed word names the command"],
+      ["env -u $X", 'X="FOO rm" runs rm'],
+      ["env -S 'rm x'", "-S splits its value into the command"],
+      ["sudo env", "only the outermost layer is read"],
+    ])("for %s (%s)", (command) => {
+      const result = decide(permissive, command);
+      expect(result.state).toBe("ask");
+      expect(result.matchedPattern).toBe("<indirection-bash-wrapper>");
+    });
+  });
+
+  describe("an explicit rule on env", () => {
+    it.each(["ask", "deny"] as const)("keeps env: %s", (state) => {
+      const result = decide({ "*": "allow", env: state }, "env");
+      expect(result.state).toBe(state);
+      expect(result.matchedPattern).toBe("env");
+    });
+  });
+
+  describe("its session suggestion", () => {
+    it.each(["env -u FOO", "env FOO=1"])(
+      "keeps %s whole, so a grant covers no command behind env",
+      (command) => {
+        expect(suggestBashPattern(command)).toBe(command);
+      },
+    );
+  });
+});
+
 describe("resolveBashCommandCheck: a wrapper's session grant", () => {
   beforeAll(async () => {
     await warmBashParser();
