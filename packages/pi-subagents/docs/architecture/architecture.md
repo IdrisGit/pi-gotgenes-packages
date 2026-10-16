@@ -108,6 +108,7 @@ flowchart TB
         ResultRenderer["result-renderer<br/>(pure rendering)"]
         SpawnConfig["spawn-config<br/>(resolve params)"]
         FgRunner["foreground-runner"]
+        ProgressStream["progress-stream<br/>(inline progress)"]
         BgSpawner["background-spawner"]
         GetResult["get_subagent_result"]
         GetResultRenderer["get-result-renderer<br/>(pure rendering)"]
@@ -161,7 +162,7 @@ classDiagram
         +isRunning(): boolean
         +canBeSteered(): boolean
         +run()
-        +resume(prompt, signal)
+        +resume(prompt, options)
         +abort(): boolean
         +waitUntilSettled(signal): Promise~void~
         +steer(message): Promise~SteerOutcome~
@@ -403,6 +404,7 @@ src/
 │   ├── result-renderer.ts          pure per-status result rendering
 │   ├── spawn-config.ts             pure config resolution
 │   ├── foreground-runner.ts        foreground execution loop
+│   ├── progress-stream.ts          inline spinner progress a foreground run streams to its tool call, for a spawn and a resume alike
 │   ├── background-spawner.ts       background spawn setup + the launch message every background door (spawn, resume) returns
 │   ├── get-result-tool.ts          get_subagent_result tool; an optional timeout bounds a wait without stopping the agent; a wait a resume superseded reports the run it waited for
 │   ├── get-result-report.ts        pure get_subagent_result report formatter
@@ -703,8 +705,8 @@ The four domains above describe one run, and a subagent has several: the initial
 What belongs to a run is a fact about that run, not about the agent: its abort lever and the signal wired to it, its session subscription, its turn budget, its mid-run update ledger, its outcome and whether a carrier claimed or consumed it, its mode (foreground or background), and its admission through the concurrency gate.
 What belongs to the agent outlives every run: identity, the child session, the workspace, and the lifetime metrics.
 
-The code does not draw this boundary yet.
-Per-run facts live as fields on the per-agent record and are cleared by hand where a run begins (`resetForResume`), and "initial or resume" is re-decided in parallel method pairs at the session, record, and observer layers.
+The code draws part of this boundary: `SubagentRun` carries a run's abort lever, signal wiring, session subscription, kind, and mode, and `Subagent.isBackground` reports the current run's mode.
+The remaining per-run facts live as fields on the per-agent record and are cleared by hand where a run begins (`resetForResume`).
 The tells are the bug family of a lever set at one lifecycle edge and read at another ([#913], [#949]) and a method pair that has already diverged.
 
 The target: the record holds its current run, a resume starts a new run instead of resetting the old one, a waiter holds the run it waited on, and the run's kind is a property of the run, decided once where it is published (`subagents:completed` versus `subagents:resumed`) rather than in every layer.
@@ -1039,7 +1041,7 @@ The run-kind row reads 0, the payload row 1, the `subagent.test.ts` `mock.calls[
 
 Release: independent
 
-#### [#1012] A background resume shows a widget row
+#### ✅ [#1012] A background resume shows a widget row
 
 **Cause:** mode (foreground or background) is a fact about a run, but the record fixes it at spawn as `isBackground`, so an agent spawned in the foreground and resumed in the background runs with no widget row: the widget lists the records whose spawn-time mode was background.
 
@@ -1050,6 +1052,11 @@ Release: independent
 - **Outcome:** a record running a background resume shows in the widget whatever mode it was spawned in (pinned).
 - **Commit type:** `fix:`.
 - **Impact 3 / Risk 2 / Priority 12.**
+
+Landed: `SubagentRun` carries its mode (`inBackground`), and `Subagent.isBackground`, with the public `SubagentRecord.isBackground` copied from it, reports the current run's mode: the spawn's before the first run, then each run's own.
+`SubagentRecord.isBackground` therefore keeps no spawn-time meaning, a breaking change decision 0005 now records.
+Every front door states a resume's mode through the required `ResumeCallOptions.background`: the tool's `run_in_background: true` resume and `SubagentsService.resume()` run in the background, and the tool's foreground resume streams inline progress through the `startProgressStream` it now shares with a foreground spawn.
+The widget also resets a record's linger age when a run starts, so a resumed run's finished row lingers like the first run's.
 
 Release: independent
 
@@ -1130,7 +1137,7 @@ flowchart TD
     S1048["✅ #1048<br/>Zone-order moves"] -.soft.-> S1049["✅ #1049<br/>Per-run lever and wiring"]
     S1049 --> S1050["✅ #1050<br/>One run lifecycle"]
     S1049 --> S1051
-    S1049 --> S1012["#1012<br/>Background resume widget row"]
+    S1049 --> S1012["✅ #1012<br/>Background resume widget row"]
     S1050 -.soft.-> S1051
     S1050 --> S1013["#1013<br/>Resume admission"]
     S1051 -.soft.-> S1013
