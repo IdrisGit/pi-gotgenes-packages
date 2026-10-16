@@ -2610,6 +2610,30 @@ describe("configured prompt preferences reach the inline dialog", () => {
   // debug log and nothing else, because the factory-time priming refresh
   // recorded the warning as delivered while having no ctx to deliver it.
   describe("a config issue present at session start", () => {
+    it("names a commandEffects declaration the pure-reader core shadows", async () => {
+      writeGlobalConfig({
+        permission: { "*": "ask", bash: { "*": "ask" } },
+        commandEffects: { sed: { effects: "read" } },
+      });
+
+      const cwd = mkdtempSync(join(tmpdir(), "pi-perm-shadow-cwd-"));
+      const pi = makeFakePi({ toolNames: ["demo"] });
+      piPermissionSystemExtension(pi as unknown as ExtensionAPI);
+
+      const { ctx, notified } = makeTuiCtx(cwd);
+      await fireSessionStart(pi, ctx);
+
+      expect(
+        notified.filter((message) =>
+          message.includes(
+            "commandEffects declares 'sed', a pure-reader core command.",
+          ),
+        ),
+      ).toHaveLength(1);
+
+      rmSync(cwd, { recursive: true, force: true });
+    });
+
     it("is shown by session_start alone, before the first turn", async () => {
       // The shape `detectPermissiveBashFallback` exists to flag.
       writeGlobalConfig({ permission: { "*": "allow" } });

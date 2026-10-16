@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  detectShadowedCommandEffects,
   foldDeclaredCommandEffects,
   NO_DECLARED_COMMAND_EFFECTS,
 } from "#src/config/command-effects-config";
@@ -63,6 +64,48 @@ describe("foldDeclaredCommandEffects", () => {
 
     expect(foldDeclaredCommandEffects(global, undefined, "project")).toBe(
       global,
+    );
+  });
+});
+
+describe("detectShadowedCommandEffects", () => {
+  const CORE = new Set(["cat", "sed", "sort"]);
+
+  it("stays silent when no declaration names a core word", () => {
+    const declared = foldDeclaredCommandEffects(
+      NO_DECLARED_COMMAND_EFFECTS,
+      { git: { subcommands: { log: "read" } } },
+      "global",
+    );
+
+    expect(detectShadowedCommandEffects(declared, CORE)).toBeUndefined();
+  });
+
+  it("names one shadowed declaration", () => {
+    const declared = foldDeclaredCommandEffects(
+      NO_DECLARED_COMMAND_EFFECTS,
+      { sed: { effects: "read", unlessOption: ["-i"] } },
+      "global",
+    );
+
+    expect(detectShadowedCommandEffects(declared, CORE)).toBe(
+      "commandEffects declares 'sed', a pure-reader core command. The core decides its effects, so the declaration is ignored; remove it.",
+    );
+  });
+
+  it("names every shadowed declaration in one message, sorted", () => {
+    const declared = foldDeclaredCommandEffects(
+      NO_DECLARED_COMMAND_EFFECTS,
+      {
+        sort: { effects: "read" },
+        git: { effects: "read" },
+        sed: { effects: "read" },
+      },
+      "project",
+    );
+
+    expect(detectShadowedCommandEffects(declared, CORE)).toBe(
+      "commandEffects declares 'sed' and 'sort', pure-reader core commands. The core decides their effects, so the declarations are ignored; remove them.",
     );
   });
 });

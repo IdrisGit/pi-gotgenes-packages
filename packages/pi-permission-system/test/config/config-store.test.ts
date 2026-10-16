@@ -114,6 +114,7 @@ function makeStore(overrides: Partial<ConfigStoreDeps> = {}): {
   const deps: ConfigStoreDeps = {
     agentDir: "/test/agent",
     policyPaths: makePolicyPathProvider(),
+    coreCommandWords: new Set(["sed"]),
     logger,
     ...overrides,
   };
@@ -184,6 +185,24 @@ describe("ConfigStore", () => {
       });
       store.refresh("/test/project", true);
       expect(store.getConfigIssues()).toEqual([]);
+    });
+
+    it("appends a declaration the pure-reader core shadows", () => {
+      const { store } = makeStore();
+      mockLoadAndMergeConfigs.mockReturnValue({
+        declaredCommandEffects: foldDeclaredCommandEffects(
+          NO_DECLARED_COMMAND_EFFECTS,
+          { sed: { effects: "read" }, git: { effects: "read" } },
+          "global",
+        ),
+        merged: { ...DEFAULT_EXTENSION_CONFIG },
+        issues: ["first issue"],
+      });
+      store.refresh("/test/project", true);
+      expect(store.getConfigIssues()).toEqual([
+        "first issue",
+        "commandEffects declares 'sed', a pure-reader core command. The core decides its effects, so the declaration is ignored; remove it.",
+      ]);
     });
   });
 

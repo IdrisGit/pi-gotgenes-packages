@@ -56,3 +56,30 @@ export function foldDeclaredCommandEffects(
   );
   return { ...base, ...stamped };
 }
+
+/**
+ * Report the declarations the pure-reader core shadows, or `undefined` when
+ * none is.
+ *
+ * The core answers first and its answer stands, retraction included (ADR 0013
+ * §7), so a declaration keyed by a core word is never read. Saying so at load
+ * keeps it from being a silent no-op. `coreWords` is injected because this
+ * layer may not import the bash analysis that owns the roster.
+ *
+ * Pure, following `detectPermissiveBashFallback`: the caller owns pushing the
+ * message onto the issue list.
+ */
+export function detectShadowedCommandEffects(
+  declared: DeclaredCommandEffects,
+  coreWords: ReadonlySet<string>,
+): string | undefined {
+  const shadowed = Object.keys(declared)
+    .filter((command) => coreWords.has(command))
+    .sort();
+  if (shadowed.length === 0) return undefined;
+
+  const names = shadowed.map((command) => `'${command}'`).join(" and ");
+  return shadowed.length === 1
+    ? `commandEffects declares ${names}, a pure-reader core command. The core decides its effects, so the declaration is ignored; remove it.`
+    : `commandEffects declares ${names}, pure-reader core commands. The core decides their effects, so the declarations are ignored; remove them.`;
+}

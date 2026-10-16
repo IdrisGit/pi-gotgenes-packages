@@ -10,6 +10,7 @@ import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import type { DebugReviewLogger } from "#src/logging/session-logger";
 import {
   type DeclaredCommandEffects,
+  detectShadowedCommandEffects,
   NO_DECLARED_COMMAND_EFFECTS,
 } from "./command-effects-config";
 import type { ConfigIssueSource } from "./config-issue-reporter";
@@ -70,6 +71,8 @@ export interface ConfigStoreDeps {
   agentDir: string;
   policyPaths: ResolvedPolicyPathProvider;
   logger: DebugReviewLogger;
+  /** The pure-reader core's words, which a `commandEffects` declaration cannot override. */
+  coreCommandWords: ReadonlySet<string>;
 }
 
 /**
@@ -152,7 +155,14 @@ export class ConfigStore
     this.config = runtimeConfig;
     this.declared = mergeResult.declaredCommandEffects;
 
-    this.configIssues = mergeResult.issues;
+    const shadowed = detectShadowedCommandEffects(
+      this.declared,
+      this.deps.coreCommandWords,
+    );
+    this.configIssues =
+      shadowed === undefined
+        ? mergeResult.issues
+        : [...mergeResult.issues, shadowed];
 
     const warning =
       mergeResult.issues.length > 0 ? mergeResult.issues.join("\n") : undefined;
