@@ -1714,7 +1714,8 @@ describe("Subagent — ask-back", () => {
 
 describe("Subagent.resume() — happy path", () => {
 	it("transitions to completed and sets result from the resume response", async () => {
-		const { agent } = createResumableAgent();
+		const { agent, stub } = createResumableAgent();
+		stub.resumeTurnLoop.mockResolvedValue(turnLoopResult({ responseText: "resumed" }));
 		await agent.resume("continue");
 		expect(agent.status).toBe("completed");
 		expect(agent.result).toBe("resumed");
