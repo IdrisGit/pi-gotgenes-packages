@@ -564,16 +564,19 @@ describe("SubagentSession — resumeTurnLoop", () => {
   it("re-prompts the session and returns the final assistant text", async () => {
     const { session } = createSession("RESUMED");
     const { sub } = makeSubagentSession(session);
+    await sub.runTurnLoop("go", {});
     const result = await sub.resumeTurnLoop("Continue", {});
-    expect(session.prompt).toHaveBeenCalledWith("Continue");
+    expect(session.prompt).toHaveBeenLastCalledWith("Continue");
     expect(result).toEqual({ responseText: "RESUMED", turnBudget: { used: 0, phase: "within" } });
   });
 
   it("does not emit completed or disposed", async () => {
     const { session } = createSession("RESUMED");
     const { sub } = makeSubagentSession(session, { lifecycle });
+    await sub.runTurnLoop("go", {});
     await sub.resumeTurnLoop("Continue", {});
-    expect(lifecycle.completed).not.toHaveBeenCalled();
+    // Once, for the first run alone.
+    expect(lifecycle.completed).toHaveBeenCalledOnce();
     expect(lifecycle.disposed).not.toHaveBeenCalled();
   });
 
@@ -582,24 +585,27 @@ describe("SubagentSession — resumeTurnLoop", () => {
   // before the failure (#889).
   it("rejects with the provider's error message when the resumed turn errored", async () => {
     const { session } = createSession("unused");
-    programMessages(session, [providerErrorMessage("401 invalid api key")]);
     const { sub } = makeSubagentSession(session);
+    await sub.runTurnLoop("go", {});
+    programMessages(session, [providerErrorMessage("401 invalid api key")]);
     await expect(sub.resumeTurnLoop("Continue", {})).rejects.toThrow("401 invalid api key");
   });
 
   it("does not report an earlier turn's text as the resumed answer", async () => {
     const { session } = createSession("unused");
     session.messages.push(assistantMessage("work from the turn before the failure", "stop"));
-    programMessages(session, [providerErrorMessage("stream disconnected")]);
     const { sub } = makeSubagentSession(session);
+    await sub.runTurnLoop("go", {});
+    programMessages(session, [providerErrorMessage("stream disconnected")]);
     await expect(sub.resumeTurnLoop("Continue", {})).rejects.toThrow("stream disconnected");
   });
 
   it("rejects when overflow recovery stripped the resumed turn's error", async () => {
     const { session } = createSession("unused");
     session.messages.push(assistantMessage("work from the turn before the failure", "stop"));
-    programStrippedFailure(session, "503 upstream unavailable");
     const { sub } = makeSubagentSession(session);
+    await sub.runTurnLoop("go", {});
+    programStrippedFailure(session, "503 upstream unavailable");
     await expect(sub.resumeTurnLoop("Continue", {})).rejects.toThrow("503 upstream unavailable");
   });
 
@@ -646,6 +652,7 @@ describe("SubagentSession — resumeTurnLoop", () => {
   it("resolves normally when the resumed turn did not error", async () => {
     const { session } = createSession("RESUMED");
     const { sub } = makeSubagentSession(session);
+    await sub.runTurnLoop("go", {});
     await expect(sub.resumeTurnLoop("Continue", {})).resolves.toEqual({ responseText: "RESUMED", turnBudget: { used: 0, phase: "within" } });
   });
 });
@@ -718,10 +725,11 @@ describe("SubagentSession — a turn loop whose signal already fired", () => {
   describe("resumeTurnLoop", () => {
     it("takes no turn and does not report the previous run's answer", async () => {
       const { session } = createSession("full answer");
-      session.messages.push(assistantMessage("the previous run's answer", "stop"));
       const { sub } = makeSubagentSession(session);
+      await sub.runTurnLoop("go", {});
       const result = await sub.resumeTurnLoop("Continue", { signal: firedSignal() });
-      expect(session.prompt).not.toHaveBeenCalled();
+      // Prompted once, for the first run's answer; the resume took no turn.
+      expect(session.prompt).toHaveBeenCalledOnce();
       expect(result).toEqual({ responseText: "", turnBudget: { used: 0, phase: "within" } });
     });
 
