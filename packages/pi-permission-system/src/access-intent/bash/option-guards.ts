@@ -25,6 +25,25 @@ export function optionGuard(guard: RetractionGuard): ClaimWithdrawal {
 }
 
 /**
+ * A withdrawal decided by option stems as a user writes them (`-i`,
+ * `--in-place`, `-exec`), each classified by its shape: a single letter after
+ * one dash matches anywhere in a cluster, a stem after two dashes matches as a
+ * long option, and a longer stem after one dash matches the word exactly or
+ * with a suffix attached.
+ */
+export function stemGuard(stems: readonly string[]): ClaimWithdrawal {
+  const longStems = new Set<string>();
+  const shortLetters = new Set<string>();
+  const dashWordPrefixes = new Set<string>();
+  for (const stem of stems) {
+    if (stem.startsWith("--")) longStems.add(stem);
+    else if (stem.length === 2) shortLetters.add(stem.slice(1));
+    else dashWordPrefixes.add(stem);
+  }
+  return optionGuard({ longStems, shortLetters, dashWordPrefixes });
+}
+
+/**
  * The option forms that withdraw a guarded word's read claim.
  *
  * Matching is fail-closed over the forms ADR 0013 §7 names: a long stem
@@ -45,6 +64,11 @@ export interface RetractionGuard {
   readonly longStems?: ReadonlySet<string>;
   /** Short letters, matched anywhere in a single-dash cluster (`-uo`). */
   readonly shortLetters?: ReadonlySet<string>;
+  /**
+   * Single-dash long options, matched as the whole word or with a suffix
+   * attached (`-exec` matches `-execdir`), never read as a cluster of letters.
+   */
+  readonly dashWordPrefixes?: ReadonlySet<string>;
 }
 
 // ── Private helpers ────────────────────────────────────────────────────────
@@ -52,6 +76,7 @@ export interface RetractionGuard {
 function retractsClaim(word: string, guard: RetractionGuard): boolean {
   if (guard.exactWords?.has(word)) return true;
   if (matchesLongStem(word, guard.longStems)) return true;
+  if (matchesDashWordPrefix(word, guard.dashWordPrefixes)) return true;
   return matchesShortCluster(word, guard.shortLetters);
 }
 
@@ -71,6 +96,18 @@ function matchesLongStem(
   if (!name.startsWith("--") || name.length <= 2) return false;
   for (const stem of stems) {
     if (stem.startsWith(name)) return true;
+  }
+  return false;
+}
+
+/** A single-dash long option, whole or with a suffix attached. */
+function matchesDashWordPrefix(
+  word: string,
+  prefixes: ReadonlySet<string> | undefined,
+): boolean {
+  if (!prefixes) return false;
+  for (const prefix of prefixes) {
+    if (word.startsWith(prefix)) return true;
   }
   return false;
 }

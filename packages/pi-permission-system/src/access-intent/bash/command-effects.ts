@@ -3,7 +3,12 @@ import {
   type TokenEffect,
   UNPROVEN_EFFECT,
 } from "#src/access-intent/effect";
+import type { DeclaredCommandEffects } from "#src/config/command-effects-config";
 import { awkWithdrawsReadClaim } from "./awk-invocation";
+import {
+  type OperandAttribution,
+  proveDeclaredEffect,
+} from "./declared-command-effects";
 import type { ArgWord } from "./node-text";
 import { type ClaimWithdrawal, optionGuard } from "./option-guards";
 import { sedWithdrawsReadClaim } from "./sed-invocation";
@@ -36,6 +41,27 @@ export function proveCommandEffect(
   const withdrawsClaim = RETRACTION_GUARDS.get(headWord);
   if (withdrawsClaim?.(argWords)) return RETRACTED_EFFECT;
   return CORE_READ_EFFECT;
+}
+
+/**
+ * What a command's head word establishes for the operand tokens it owns, from
+ * the core first and the user's `commandEffects` declarations only when the
+ * core proves nothing (ADR 0013 §7's decreasing order of authority).
+ *
+ * A core word's answer stands whatever is declared for it, its retraction
+ * included: a declaration's guard is coarser than the core's proof, so letting
+ * it answer after a retraction would turn a deliberate withdrawal back into a
+ * read. The wrapper floor reads {@link proveCommandEffect} instead, because a
+ * declaration never lifts it (§11).
+ */
+export function attributeCommandOperands(
+  headWord: string,
+  argWords: readonly ArgWord[],
+  declared: DeclaredCommandEffects,
+): OperandAttribution {
+  const core = proveCommandEffect(headWord, argWords);
+  if (core.source !== "unproven") return { kind: "effect", effect: core };
+  return proveDeclaredEffect(declared, headWord, argWords);
 }
 
 /**
