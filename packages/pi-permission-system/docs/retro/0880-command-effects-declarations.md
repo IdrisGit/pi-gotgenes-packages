@@ -38,6 +38,36 @@ Release is mid-batch ("declared-effects"); [#881] is the tail.
 - `src/config/config-loader.ts`: the five legacy/global/project blocks in `loadAndMergeConfigs` repeat one load-warn-merge shape; the assessor rejected splitting them as unrelated to this change.
 - `test/access-intent/bash/token-collection.test.ts` (1535 lines): restructuring was rejected as scope creep; new declaration tests go to a new file.
 
+## Stage: Implementation — TDD (2026-10-16T05:16:14Z)
+
+### Session summary
+
+All ten planned TDD steps landed, plus one review-driven `feat:` and two docs follow-ups: two Tidy-First refactors, four `refactor:` steps building the fold, prover, collector relay, and inert-role projection drop, two `feat:` steps wiring the key and the core-shadow warning, the measurement instrument, and the docs.
+The `pi-permission-system` suite went from 6187 to 6316 tests (+129).
+The pre-completion reviewer returned FAIL on the first round and WARN on the delta re-review.
+
+### Observations
+
+- **Guard applied only when a stem is declared (step 5).**
+  The core's `optionGuard` retracts on any computed word that may lead with `-`, so an unguarded declaration retracted on `officecli x $(cat ~/a)`; the token-collection role test caught it and `proveDeclaredEffect` now skips the guard when no stem was met.
+- **Fold-order mutation needed the reversed command (step 6).**
+  Moving the inert skip after the fold only shows when the inert token comes second (`cat ~/x; officecli x ~/x`), so that order joined the test; the plan's single order would have left the mutation alive.
+- **Plan deviations.**
+  Program-level tests went to a new `program-declared-effects.test.ts` and to `bash-effect-invariants.test.ts` (real resolver, real manager) rather than `program.test.ts`/`program-external-accesses.test.ts`; the schema's `$defs` test gained the fourth entry the plan predicted; the docs recipe dropped `curl`, since `curl -d @file` reads a file and an `effects: []` recipe for it would be unsafe advice.
+- **Reviewer FAIL, fixed in `feat(pi-permission-system): ignore and report a commandEffects declaration keyed by a wrapper`.**
+  A declaration keyed by a wrapper word (`xargs: read`, `sudo: []`) attributed, or withdrew from the path gates, the inner command's operands, since wrapper words are not core words and fell through to the declarations.
+  `collectCommandTokens` now passes no declarations for a head in `WRAPPER_COMMAND_NAMES` (exported from `wrapper-analysis.ts`; the check sits in `token-collection.ts` because `wrapper-analysis.ts` already imports `command-effects.ts`), and config load names such a key beside the core-shadowed ones.
+  The plan's invariant table pinned the inner-command case (`xargs git log` with `git log` declared) and missed the wrapper-key case, which is the same invariant entered from the other side.
+- **Reviewer non-blocking, fixed.**
+  `git log` and `git show` accept `--output=<file>` too, so the recipe, example config, and schema example guard `--output` on `git` itself.
+- **Reviewer WARN, documented rather than fixed.**
+  Prefix commands outside the floor's list (`command`, `exec`, `builtin`, `busybox`, `ionice`) are still read as ordinary declarations; `docs/configuration.md` now says not to declare one, and the family is [#926]'s territory.
+- **Process slip.**
+  Twice a green-copy `cp` or a mutation `Edit` ran in the same parallel batch as the call it depended on; once a mutation survived into the tree until the full-suite run caught it.
+  The `/tdd-plan` rule against batching an `Edit` with a call that reads or copies the same file is the one that bit.
+- **Measured relief** (`scripts/measure-core-coverage.mjs --declarations`, nine-subcommand `git` recipe plus `officecli: []`): recent asks relieved go from 172/975 (17.6%) to 186/975 (19.1%); `git` stays the top blocker because most asked `git` units are writers.
+- Pre-completion reviewer: FAIL (round 1, wrapper-keyed declarations), then WARN (round 2, non-floor prefix commands; the retro entry, now written).
+
 [#799]: https://github.com/gotgenes/pi-packages/issues/799
 [#804]: https://github.com/gotgenes/pi-packages/issues/804
 [#881]: https://github.com/gotgenes/pi-packages/issues/881
