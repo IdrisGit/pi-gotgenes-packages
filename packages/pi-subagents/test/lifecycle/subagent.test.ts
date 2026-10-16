@@ -20,11 +20,32 @@ const EXHAUSTED: TurnBudget = { maxTurns: 5, used: 5, phase: "exhausted" };
 
 type SessionFactory = (params: CreateSubagentSessionParams) => Promise<SubagentSession>;
 
-/** Build a factory plus the SubagentSession stub it resolves to. */
-function createFactory(): { factory: SessionFactory; stub: ReturnType<typeof createSubagentSessionStub> } {
+/**
+ * Build a factory plus the SubagentSession stub it resolves to.
+ *
+ * The factory records the params the latest session was created with, so a
+ * test reads what run() handed it through `params()`, and calls the channels it
+ * installed through `ask`/`notify`, the way a real child does: from inside its
+ * turn loop.
+ */
+function createFactory() {
 	const stub = createSubagentSessionStub();
-	const factory = vi.fn(async (_params: CreateSubagentSessionParams) => toSubagentSession(stub));
-	return { factory, stub };
+	let created: CreateSubagentSessionParams | undefined;
+	const factory = vi.fn(async (params: CreateSubagentSessionParams) => {
+		created = params;
+		return toSubagentSession(stub);
+	});
+	const params = (): CreateSubagentSessionParams => {
+		if (!created) throw new Error("no session was created");
+		return created;
+	};
+	return {
+		factory,
+		stub,
+		params,
+		ask: (question: string) => { params().askParent?.(question); },
+		notify: (message: string) => { params().notifyParent?.(message); },
+	};
 }
 
 /** A factory resolving to a default (done) SubagentSession stub. */
@@ -743,12 +764,11 @@ describe("Subagent.run() — happy path", () => {
 
 describe("Subagent.run() — workspace provider", () => {
 	it("prepares the workspace and threads its cwd into the factory params", async () => {
-		const { factory } = createFactory();
+		const { factory, params } = createFactory();
 		const provider = makeWorkspaceProvider(makeWorkspace("/ws/dir"));
 		const agent = createRunnableAgent({ createSubagentSession: factory, workspaceProvider: provider });
 		await agent.run();
-		const params = (factory as ReturnType<typeof vi.fn>).mock.calls[0][0];
-		expect(params.cwd).toBe("/ws/dir");
+		expect(params().cwd).toBe("/ws/dir");
 	});
 
 	it("calls prepare with exactly the run-start context", async () => {
@@ -774,12 +794,11 @@ describe("Subagent.run() — workspace provider", () => {
 	});
 
 	it("falls back to baseCwd (cwd undefined) when prepare returns undefined", async () => {
-		const { factory } = createFactory();
+		const { factory, params } = createFactory();
 		const provider = makeWorkspaceProvider(undefined);
 		const agent = createRunnableAgent({ createSubagentSession: factory, workspaceProvider: provider });
 		await agent.run();
-		const params = (factory as ReturnType<typeof vi.fn>).mock.calls[0][0];
-		expect(params.cwd).toBeUndefined();
+		expect(params().cwd).toBeUndefined();
 		expect(agent.status).toBe("completed");
 	});
 
@@ -885,37 +904,46 @@ describe("Subagent — resumeRefusal", () => {
 
 const ADDENDUM = "\n\n---\nsaved to branch foo";
 
+/** What a run-to-outcome arrange asks for: the turn loop's result, plus how the child behaves. */
+interface RunOutcomeOptions extends Partial<TurnLoopResult> {
+	/** Asked through `ask_parent` from inside the turn loop, the way a real child asks one. */
+	question?: string;
+	/** Runs the agent under a provider that prepares this workspace. */
+	workspace?: ReturnType<typeof makeWorkspace>;
+	observer?: SubagentLifecycleObserver;
+}
+
 /**
- * Run an agent under a workspace provider to a terminal turn-loop result.
+ * Run an agent to a terminal turn-loop result.
  *
- * A `question` is asked the way a real child asks one: by calling the recorder
- * the assembly factory installed as `ask_parent`, from inside the turn loop.
+ * Returns the session stub and the `ask` recorder too, so a resumed run can
+ * ask again on the same session.
  */
-async function runWithWorkspace(
-	result: Partial<TurnLoopResult> & { responseText: string; question?: string },
-) {
-	const stub = createSubagentSessionStub();
-	let askParent: ((question: string) => void) | undefined;
-	const factory = async (params: CreateSubagentSessionParams) => {
-		askParent = params.askParent;
-		return toSubagentSession(stub);
-	};
+async function runToOutcome(opts: RunOutcomeOptions) {
+	const { question, workspace, observer, ...result } = opts;
+	const { factory, stub, ask } = createFactory();
 	stub.runTurnLoop.mockImplementation(() => {
-		if (result.question !== undefined) askParent?.(result.question);
+		if (question !== undefined) ask(question);
 		return Promise.resolve(turnLoopResult(result));
 	});
-	const workspace = makeWorkspace("/ws/dir", { resultAddendum: ADDENDUM });
 	const agent = createRunnableAgent({
 		createSubagentSession: factory,
-		workspaceProvider: makeWorkspaceProvider(workspace),
+		workspaceProvider: workspace ? makeWorkspaceProvider(workspace) : undefined,
+		observer,
 	});
 	await agent.run();
-	return { agent, workspace, stub, ask: (question: string) => askParent?.(question) };
+	return { agent, stub, ask };
+}
+
+/** Run an agent to a terminal turn-loop result under a workspace that reports {@link ADDENDUM}. */
+async function runWithWorkspace(opts: Omit<RunOutcomeOptions, "workspace">) {
+	const workspace = makeWorkspace("/ws/dir", { resultAddendum: ADDENDUM });
+	return { ...(await runToOutcome({ ...opts, workspace })), workspace };
 }
 
 /** Run an agent to a question-ending completion, so its workspace is still held. */
-function heldWorkspaceAgent() {
-	return runWithWorkspace({ responseText: "Mapped the configs.", question: "Which one?" });
+function heldWorkspaceAgent(observer?: SubagentLifecycleObserver) {
+	return runWithWorkspace({ responseText: "Mapped the configs.", question: "Which one?", observer });
 }
 
 describe("Subagent — workspace hold for a declared question", () => {
@@ -1099,24 +1127,7 @@ describe("Subagent — announcing a notice produced after the result was deliver
 	/** A held-workspace agent whose observer records every workspace notice. */
 	async function heldAgentWithObserver() {
 		const onWorkspaceNotice = vi.fn<(agent: Subagent, notice: string) => void>();
-		const stub = createSubagentSessionStub();
-		let askParent: ((question: string) => void) | undefined;
-		const factory = async (params: CreateSubagentSessionParams) => {
-			askParent = params.askParent;
-			return toSubagentSession(stub);
-		};
-		stub.runTurnLoop.mockImplementation(() => {
-			askParent?.("Which one?");
-			return Promise.resolve(turnLoopResult({ responseText: "Mapped the configs." }));
-		});
-		const workspace = makeWorkspace("/ws/dir", { resultAddendum: ADDENDUM });
-		const agent = createRunnableAgent({
-			createSubagentSession: factory,
-			workspaceProvider: makeWorkspaceProvider(workspace),
-			observer: { onWorkspaceNotice },
-		});
-		await agent.run();
-		return { agent, workspace, stub, onWorkspaceNotice };
+		return { ...(await heldWorkspaceAgent({ onWorkspaceNotice })), onWorkspaceNotice };
 	}
 
 	it("announces when the retention sweep releases the session", async () => {
@@ -1263,49 +1274,41 @@ describe("Subagent.run() — RunConfig threading", () => {
 
 // ── The child-to-parent channel ────────────────────────────────────────────────
 
-/** A session factory that keeps its Mock type, so tests can read the params it received. */
-function createSpyFactory() {
-	const stub = createSubagentSessionStub();
-	const factory = vi.fn(async (_params: CreateSubagentSessionParams) => toSubagentSession(stub));
-	return { factory, stub };
-}
-
 describe("Subagent — the ask-back recorder", () => {
 	it("hands the session factory a recorder for the child's question", async () => {
-		const { factory } = createSpyFactory();
+		const { factory, params } = createFactory();
 		const agent = createRunnableAgent({ createSubagentSession: factory });
 
 		await agent.run();
 
-		expect(factory.mock.calls[0][0].askParent).toBeTypeOf("function");
+		expect(params().askParent).toBeTypeOf("function");
 	});
 
 	it("records a question the child declares mid-run", async () => {
-		const { factory } = createSpyFactory();
+		const { factory, ask } = createFactory();
 		const agent = createRunnableAgent({ createSubagentSession: factory });
 		await agent.run();
 
-		factory.mock.calls[0][0].askParent?.("Which config wins?");
+		ask("Which config wins?");
 
 		expect(agent.pendingQuestion).toBe("Which config wins?");
 	});
 
 	it("keeps only the last question when the child asks twice", async () => {
-		const { factory } = createSpyFactory();
+		const { factory, ask } = createFactory();
 		const agent = createRunnableAgent({ createSubagentSession: factory });
 		await agent.run();
-		const ask = factory.mock.calls[0][0].askParent;
 
-		ask?.("first");
-		ask?.("second");
+		ask("first");
+		ask("second");
 
 		expect(agent.pendingQuestion).toBe("second");
 	});
 
 	it("drops a recorded question when the run fails, so no carrier invites a resume", async () => {
-		const { factory, stub } = createSpyFactory();
+		const { factory, stub, ask } = createFactory();
 		stub.runTurnLoop.mockImplementation(() => {
-			factory.mock.calls[0][0].askParent?.("Which config wins?");
+			ask("Which config wins?");
 			return Promise.reject(new Error("boom"));
 		});
 		const agent = createRunnableAgent({ createSubagentSession: factory });
@@ -1320,11 +1323,11 @@ describe("Subagent — the ask-back recorder", () => {
 	// record and clears any question seeded before it, so a seeded one would pass
 	// without the failure path dropping anything.
 	it("drops a recorded question when a resumed run fails", async () => {
-		const { factory, stub } = createSpyFactory();
+		const { factory, stub, ask } = createFactory();
 		const agent = createRunnableAgent({ createSubagentSession: factory });
 		await agent.run();
 		stub.resumeTurnLoop.mockImplementation(() => {
-			factory.mock.calls[0][0].askParent?.("Which config wins?");
+			ask("Which config wins?");
 			return Promise.reject(new Error("boom"));
 		});
 
@@ -1339,7 +1342,7 @@ describe("Subagent — the mid-run update channel", () => {
 	const updatesOn = { defaultMaxTurns: undefined, wrapUpTurns: 5, midRunUpdates: true };
 
 	it("gives a background child a way to send its parent an update", async () => {
-		const { factory } = createSpyFactory();
+		const { factory, params } = createFactory();
 		const agent = createRunnableAgent({
 			createSubagentSession: factory,
 			isBackground: true,
@@ -1348,11 +1351,11 @@ describe("Subagent — the mid-run update channel", () => {
 
 		await agent.run();
 
-		expect(factory.mock.calls[0][0].notifyParent).toBeTypeOf("function");
+		expect(params().notifyParent).toBeTypeOf("function");
 	});
 
 	it("reports a background child's update to the lifecycle observer", async () => {
-		const { factory } = createSpyFactory();
+		const { factory, notify } = createFactory();
 		const onUpdateSent = vi.fn<(agent: Subagent, message: string) => void>();
 		const agent = createRunnableAgent({
 			createSubagentSession: factory,
@@ -1362,13 +1365,13 @@ describe("Subagent — the mid-run update channel", () => {
 		});
 		await agent.run();
 
-		factory.mock.calls[0][0].notifyParent?.("The bug is in the retry wrapper.");
+		notify("The bug is in the retry wrapper.");
 
 		expect(onUpdateSent).toHaveBeenCalledWith(agent, "The bug is in the retry wrapper.");
 	});
 
 	it("gives a foreground child the same channel, since where its update lands is not its concern", async () => {
-		const { factory } = createSpyFactory();
+		const { factory, params } = createFactory();
 		const agent = createRunnableAgent({
 			createSubagentSession: factory,
 			isBackground: false,
@@ -1377,12 +1380,12 @@ describe("Subagent — the mid-run update channel", () => {
 
 		await agent.run();
 
-		expect(factory.mock.calls[0][0].notifyParent).toBeTypeOf("function");
+		expect(params().notifyParent).toBeTypeOf("function");
 	});
 
 	describe("routing by who holds the outcome", () => {
 		it("holds an update for the carrier that claimed the run's outcome", async () => {
-			const { factory } = createSpyFactory();
+			const { factory, notify } = createFactory();
 			const agent = createRunnableAgent({
 				createSubagentSession: factory,
 				getRunConfig: () => updatesOn,
@@ -1390,20 +1393,20 @@ describe("Subagent — the mid-run update channel", () => {
 			await agent.run();
 			agent.claim();
 
-			factory.mock.calls[0][0].notifyParent?.("The bug is in the retry wrapper.");
+			notify("The bug is in the retry wrapper.");
 
 			expect(agent.runUpdates).toEqual(["The bug is in the retry wrapper."]);
 		});
 
 		it("records the update for a carrier even when none has claimed the outcome", async () => {
-			const { factory } = createSpyFactory();
+			const { factory, notify } = createFactory();
 			const agent = createRunnableAgent({
 				createSubagentSession: factory,
 				getRunConfig: () => updatesOn,
 			});
 			await agent.run();
 
-			factory.mock.calls[0][0].notifyParent?.("The bug is in the retry wrapper.");
+			notify("The bug is in the retry wrapper.");
 
 			// The announcement channel is what decides to announce, and it marks what
 			// it delivers. Until then the run owes the message to a carrier.
@@ -1411,7 +1414,7 @@ describe("Subagent — the mid-run update channel", () => {
 		});
 
 		it("tells the observer either way, because the update is a fact about the run", async () => {
-			const { factory } = createSpyFactory();
+			const { factory, notify } = createFactory();
 			const onUpdateSent = vi.fn<(agent: Subagent, message: string) => void>();
 			const agent = createRunnableAgent({
 				createSubagentSession: factory,
@@ -1421,13 +1424,13 @@ describe("Subagent — the mid-run update channel", () => {
 			await agent.run();
 			agent.claim();
 
-			factory.mock.calls[0][0].notifyParent?.("The bug is in the retry wrapper.");
+			notify("The bug is in the retry wrapper.");
 
 			expect(onUpdateSent).toHaveBeenCalledWith(agent, "The bug is in the retry wrapper.");
 		});
 
 		it("keeps the channel live across a resume, whose parent is blocked awaiting it", async () => {
-			const { factory } = createSpyFactory();
+			const { factory, notify } = createFactory();
 			const agent = createRunnableAgent({
 				createSubagentSession: factory,
 				getRunConfig: () => updatesOn,
@@ -1436,14 +1439,14 @@ describe("Subagent — the mid-run update channel", () => {
 			agent.claim();
 			await agent.resume("keep going");
 
-			factory.mock.calls[0][0].notifyParent?.("The premise is wrong.");
+			notify("The premise is wrong.");
 
 			expect(agent.runUpdates).toEqual(["The premise is wrong."]);
 		});
 	});
 
 	it("withholds the channel when the operator turned mid-run updates off", async () => {
-		const { factory } = createSpyFactory();
+		const { factory, params } = createFactory();
 		const agent = createRunnableAgent({
 			createSubagentSession: factory,
 			isBackground: true,
@@ -1452,16 +1455,16 @@ describe("Subagent — the mid-run update channel", () => {
 
 		await agent.run();
 
-		expect(factory.mock.calls[0][0].notifyParent).toBeUndefined();
+		expect(params().notifyParent).toBeUndefined();
 	});
 
 	it("still gives a foreground child the ask-back recorder", async () => {
-		const { factory } = createSpyFactory();
+		const { factory, params } = createFactory();
 		const agent = createRunnableAgent({ createSubagentSession: factory, isBackground: false });
 
 		await agent.run();
 
-		expect(factory.mock.calls[0][0].askParent).toBeTypeOf("function");
+		expect(params().askParent).toBeTypeOf("function");
 	});
 });
 
@@ -1631,35 +1634,9 @@ function createResumableAgent(overrides?: {
 	return { agent, session, stub };
 }
 
-/**
- * Run an agent whose turn loop calls `ask_parent`, the way a real child does:
- * through the recorder the assembly factory installed on its session.
- *
- * Returns the recorder too, so a resumed run can ask again on the same session.
- */
-async function runAsking(opts: Partial<TurnLoopResult> & { responseText: string; question?: string }) {
-	const stub = createSubagentSessionStub();
-	let askParent: ((question: string) => void) | undefined;
-	const agent = makeSubagent({
-		execution: makeStubExecution({
-			createSubagentSession: async (params: CreateSubagentSessionParams) => {
-				askParent = params.askParent;
-				return toSubagentSession(stub);
-			},
-		}),
-	});
-	stub.runTurnLoop.mockImplementation(() => {
-		if (opts.question !== undefined) askParent?.(opts.question);
-		const { question: _question, ...result } = opts;
-		return Promise.resolve(turnLoopResult(result));
-	});
-	await agent.run();
-	return { agent, stub, ask: (question: string) => askParent?.(question) };
-}
-
 describe("Subagent — ask-back", () => {
 	it("records a declared question and leaves the result body untouched", async () => {
-		const { agent } = await runAsking({
+		const { agent } = await runToOutcome({
 			responseText: "I mapped the configs.",
 			question: "Which one is authoritative?",
 		});
@@ -1671,14 +1648,14 @@ describe("Subagent — ask-back", () => {
 	});
 
 	it("leaves pendingQuestion undefined when the child asked nothing", async () => {
-		const { agent } = await runAsking({ responseText: "All done." });
+		const { agent } = await runToOutcome({ responseText: "All done." });
 
 		expect(agent.pendingQuestion).toBeUndefined();
 		expect(agent.result).toBe("All done.");
 	});
 
 	it("records a question an aborted run declared before it ran out of turns", async () => {
-		const { agent } = await runAsking({
+		const { agent } = await runToOutcome({
 			responseText: "",
 			question: "Still stuck on which?",
 			turnBudget: EXHAUSTED,
@@ -1689,7 +1666,7 @@ describe("Subagent — ask-back", () => {
 	});
 
 	it("completes the round trip: ask, answer by resuming, continue", async () => {
-		const { agent, stub } = await runAsking({ responseText: "", question: "Which config?" });
+		const { agent, stub } = await runToOutcome({ responseText: "", question: "Which config?" });
 		stub.resumeTurnLoop.mockResolvedValue(turnLoopResult({ responseText: "Used the project config. Done." }));
 		expect(agent.pendingQuestion).toBe("Which config?");
 
@@ -1703,7 +1680,7 @@ describe("Subagent — ask-back", () => {
 	});
 
 	it("records a follow-up question a resumed run declares", async () => {
-		const { agent, stub, ask } = await runAsking({ responseText: "", question: "Which config?" });
+		const { agent, stub, ask } = await runToOutcome({ responseText: "", question: "Which config?" });
 		stub.resumeTurnLoop.mockImplementation(() => {
 			ask("And the fallback?");
 			return Promise.resolve(turnLoopResult({ responseText: "Thanks." }));
