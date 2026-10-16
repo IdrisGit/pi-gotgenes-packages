@@ -993,7 +993,7 @@ The move gave `ui/` a forward edge to `observation/` for the `*Details` message 
 
 Release: independent
 
-#### [#1049] Give each run its own abort lever, signal wiring, and session subscription (with [#949])
+#### ✅ [#1049] Give each run its own abort lever, signal wiring, and session subscription (with [#949])
 
 **Cause:** the handles a run wires at its start and releases at its end live on the per-agent record, so each run and resume re-mints them by hand (`_abortController` in the constructor, `run()`, and `runResume()`, and one shared `RunListeners`).
 A lever set at one lifecycle edge can then be read at another: Phase 22's [#913], and [#949], where a signal that already fired is wired to a listener that can never fire.
@@ -1006,6 +1006,12 @@ A lever set at one lifecycle edge can then be read at another: Phase 22's [#913]
   The outcome stays on `SubagentState`; [#1051] moves it.
 - **Commit type:** `refactor:` for the extraction, `fix:` for [#949].
 - **Impact 4 / Risk 3 / Priority 12.**
+
+Landed: `SubagentRun` (`src/lifecycle/subagent-run.ts`) owns one run's abort controller, caller-signal wiring, and record-observer unsubscribe, and `Subagent` keeps the current run; `_abortController` reads 0 and `run-listeners.ts` is gone.
+A caller signal that already fired gives a run born aborted: a spawn stops right after `onStarted`, before the workspace or child session exists, and a resume reaches its turn loop with a fired lever.
+Either loop handed a fired signal takes no turn and returns no text, and the initial loop still emits `subagents:child:completed`; that also stops a child whose `abort(id)` lands during setup.
+The guard lives in one prompt helper both loops share, which removed the `runTurnLoop`/`resumeTurnLoop` production clone group ahead of [#1050].
+`lifecycle/subagent.ts` grew from 834 to 850 lines; the run-kind and `resetForResume` rows are unchanged at 16 and 8.
 
 Release: independent
 
@@ -1118,7 +1124,7 @@ Release: independent
 flowchart TD
     S947["✅ #947<br/>Bounded wait with progress"] -.soft.-> S1051["#1051<br/>The run owns its outcome"]
     S947 -.soft.-> S912["✅ #912<br/>Ask whether resumable"]
-    S1048["✅ #1048<br/>Zone-order moves"] -.soft.-> S1049["#1049<br/>Per-run lever and wiring"]
+    S1048["✅ #1048<br/>Zone-order moves"] -.soft.-> S1049["✅ #1049<br/>Per-run lever and wiring"]
     S1049 --> S1050["#1050<br/>One run lifecycle"]
     S1049 --> S1051
     S1049 --> S1012["#1012<br/>Background resume widget row"]
