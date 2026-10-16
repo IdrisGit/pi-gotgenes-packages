@@ -76,3 +76,16 @@ The pre-completion reviewer returned FAIL on the first round and WARN on the del
 [#926]: https://github.com/gotgenes/pi-packages/issues/926
 [#952]: https://github.com/gotgenes/pi-packages/issues/952
 [#1073]: https://github.com/gotgenes/pi-packages/pull/1073
+
+## Stage: Sync (worktree) (2026-10-16T05:19:25Z)
+
+### Session summary
+
+Pre-push `pnpm run lint` and `pnpm fallow dead-code` passed on the branch; the plan's marker is `**Release:** mid-batch — defer (batch "declared-effects")`, so the root's `/ship` must not name `pi-permission-system` for release until #881 (the batch tail) lands.
+
+**Peer session transcript:** `/Users/chris/.pi/agent/sessions/--Users-chris-development-pi-pi-packages-worktrees-issue-880--/2026-10-16T03-52-10-529Z_01a142d6-b820-7617-99e2-dff73c2834c5.jsonl` — read with `read_session_file({ path: "<path>" })`.
+
+### Observations
+
+- No operator decision is open: the second pre-completion review's WARN (prefix commands outside the floor's list) is documented in `docs/configuration.md` and left to #926.
+- The close comment should credit boadij's scout-agent report (agent-specific declarations stay #799's question) and the planning-session data point on `git log` pathspecs.
