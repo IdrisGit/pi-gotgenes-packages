@@ -209,6 +209,24 @@ A `NAME=value` word is not exempt either: in a wrapper's argument position it is
 The exemption the 2026-10-05 text gave an environment assignment on a modifier layer rested on the opposite claim, and is withdrawn.
 The inner command's own words are not part of the rule: `sudo -u root cat $X` runs `cat` whatever `$X` becomes, and the core's argument-independence already covers them.
 
+### Amendment, 2026-10-16 — a wrapper that names no command has no floor to hold
+
+§11 keeps the floor on "any wrapper whose inner command is unresolvable", and a bare `env` has none: given no command, it prints the environment and runs nothing, on BSD and GNU alike.
+The floor's reason (a wrapper hides the command that should be gated) is false there, yet `env | rg '^PI_'` asked under a permissive policy while `printenv` and `env cat x` did not ([#1064]).
+
+**A wrapper unit that names no command, where that wrapper's bare form runs nothing, resolves by its own rule.**
+The clause is wrapper-keyed and package-audited like the other two: only `env` qualifies, since bare `xargs` runs `echo` and `sudo`'s and `doas`'s bare forms are not audited as running nothing.
+Three guards keep it from admitting a command:
+
+- The unit's own option walk ends exactly on its last word: every word is an option the wrapper's grammar lists, its value, `--` or a lone `-`, or a `NAME=value` assignment after the options.
+  A refusing mode (`env -S`, `-C`, `-P`, `-a`, `--env0-from`) and an option missing its value keep the floor.
+- Every word after the wrapper name is literal, the rule of the 2026-10-13 amendment: `env -u $X` with `X="FOO rm"` runs `rm`.
+- Only the outermost layer is read, so `sudo env` and `time env` keep the floor; none of them appears in the review log.
+
+Like the execution-modifier clause, it carries no redirect refusal: it classifies nothing, and `env > /tmp/x` is decided as `printenv > /tmp/x` is.
+The recorded reason is `no-command`, and it cannot coincide with the other two, which both need an inner command.
+Measured over the local review log from 2026-07: of 357 floored prompts, 34 more are relieved by this clause alone (`scripts/measure-wrapper-transparency.mjs`).
+
 ## Context
 
 ### The reported gap
@@ -664,6 +682,7 @@ Therefore:
 - A wrapper unit whose `executedUnitOf` head is a bare-basename core word, with no real output redirect on the unit, **inherits the inner command's verdict** — it classifies read and resolves by the inner unit's own rules instead of the synthetic floor `ask`.
 - Everything else keeps the floor untouched: interpreters, opaque payloads, mutators, and any wrapper whose inner command is unresolvable (`executedUnitOf` fails to `null`, and that discipline is retained).
 - A wrapper unit whose every layer only modifies how its inner command runs (`time`, `timeout`, `nice`, `stdbuf`, `setsid`) also inherits the inner verdict, whatever that command does (amendment of 2026-10-05).
+- A wrapper unit that names no command, where that wrapper's bare form runs nothing (`env`), resolves by its own rule (amendment of 2026-10-16).
 - **v1 exemption is package-audited only.**
   User `commandEffects` declarations participate in effect classification but do not lift the floor: the core's argument-independence is package-audited, a user's claim about a wrapped command is not, and a wrong claim behind a wrapper fails open.
   Widening to user declarations requires evidence, not symmetry.
@@ -826,4 +845,5 @@ Issue [#620] carries the judgment slice the chain retains under §7.
 [#1027]: https://github.com/gotgenes/pi-packages/issues/1027
 [#1043]: https://github.com/gotgenes/pi-packages/issues/1043
 [#1056]: https://github.com/gotgenes/pi-packages/issues/1056
+[#1064]: https://github.com/gotgenes/pi-packages/issues/1064
 [openai/codex#28732]: https://github.com/openai/codex/issues/28732

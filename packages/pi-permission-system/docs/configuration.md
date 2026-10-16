@@ -592,7 +592,7 @@ The bash gate fails closed: when in doubt it blocks or prompts, never silently a
 - An indirection wrapper — `sudo`, `env`, `xargs`, `time`, `nohup`, `timeout`, `nice`, `parallel`, `rust-parallel`, `rush`, `doas`, `setsid`, `stdbuf`, `watch`, `flock`, or `find`/`fd` carrying a per-result exec flag (`find` with `-exec`/`-execdir`/`-ok`/`-okdir`, `fd` with `-x`/`--exec`/`-X`/`--exec-batch`) — runs a following command that a rule on the wrapper text would otherwise never gate, so its decision is floored the same way (the synthetic `<indirection-bash-wrapper>` pattern in the review log).
   So `sudo aws s3 rm s3://bucket` prompts rather than riding an `aws *: allow`, while a bare `find . -name '*.py'` search (no exec flag) is unaffected.
   An `allow` is clamped to `ask`, and an explicit `deny` still denies.
-  The [two exceptions](#wrapper-transparency) are a wrapper running a pure-reader command, whose direction is provable however unknown its argument feed is, and a wrapper that only modifies how a command runs (`time`, `timeout`, `nice`, `stdbuf`, `setsid`), which is decided exactly as the command it runs.
+  The [three exceptions](#wrapper-transparency) are a wrapper running a pure-reader command, whose direction is provable however unknown its argument feed is; a wrapper that only modifies how a command runs (`time`, `timeout`, `nice`, `stdbuf`, `setsid`), which is decided exactly as the command it runs; and an `env` that names no command at all, which is decided by its own rule.
 
 Every synthetic `ask` above — the two parse sentinels and both wrapper floors — is auto-approved under `yoloMode: true`, which is an explicit full-permissive opt-in rather than a rule that could ride through.
 An explicit `deny` still denies under yolo, and with yolo off the floors are unaffected.
@@ -1083,8 +1083,8 @@ Two more shapes withdraw the claim:
 #### Wrapper transparency
 
 The [indirection-wrapper floor](#fail-closed-behavior) exists because a wrapper hides the command that should be gated.
-Two kinds of wrapper unit have no reason to be floored: one running a [pure reader](#a-wrapper-running-a-pure-reader), and one that only [modifies how a command runs](#a-wrapper-that-only-modifies-execution).
-Each resolves by the inner command's own `bash` rules, and the review log records which reason applied as `floorExemption`.
+Three kinds of wrapper unit have no reason to be floored: one running a [pure reader](#a-wrapper-running-a-pure-reader), one that only [modifies how a command runs](#a-wrapper-that-only-modifies-execution), and one that [runs nothing](#a-wrapper-that-runs-nothing).
+The first two resolve by the inner command's own `bash` rules, the third by its own, and the review log records which reason applied as `floorExemption`.
 
 ##### A wrapper running a pure reader
 
@@ -1142,6 +1142,26 @@ All four of these must hold, and each keeps the decision about the command that 
 So under `bash: {"*": "allow", "git push *": "deny"}`, `time pnpm run lint >/tmp/lint.txt 2>&1` is allowed and `timeout 60 git push --force` is denied, exactly as without the wrapper.
 No redirect refusal applies here: the redirect destination goes through `path` and `external_directory` as it does for the bare command, and a destination the parse cannot resolve (`> $OUT`) is unprojected for both forms alike.
 When a unit qualifies for both exemptions (`time grep foo`), the review log records `core-reader`.
+
+##### A wrapper that runs nothing
+
+Given no command, `env` prints the environment and runs nothing, exactly as `printenv` does.
+There is no command for it to hide, so such a unit resolves by its own `bash` rule (`env …`, or the fallback), and the review log records `floorExemption: "no-command"`.
+So under `bash: {"*": "allow"}`, `env | rg '^PI_'`, `env -i`, `env -u FOO`, and `env FOO=1` are allowed.
+
+All three of these must hold, and each is a way a command could still run:
+
+1. The unit is `env` itself, not `env` behind another wrapper: `sudo env` and `time env` stay floored.
+   No other wrapper qualifies, since bare `xargs` runs `echo` and `sudo` and `doas` are not audited for their bare forms.
+2. Every word after `env` is an option `env` is known to take, that option's value, `--` or a lone `-`, or a `NAME=value` assignment after the options.
+   A [refused mode](#declarations-and-privilege) keeps the floor even with no command (`env -C /tmp`, `env -S 'rm x'`), and so does a quoted assignment (`env 'FOO=1'`), which reads as a command.
+3. Every one of those words is written literally.
+   `env -u $X` with `X="FOO rm"` runs `rm`, and `env $X` may name any command.
+
+No redirect refusal applies: `env > /tmp/x` is decided as `printenv > /tmp/x` is, with the destination gated by `path` and `external_directory`.
+
+If you want a bare `env` to prompt because it prints every secret in the environment, say so in the policy: `"env *": "ask"` and `"printenv *": "ask"` match the bare commands and every form with options, and a rule on the wrapper's own text is decided before the exemption is consulted.
+That rule also asks for every `env` that does run a command (`env cat x`), which is usually what such a policy wants.
 
 ##### Declarations and privilege
 
