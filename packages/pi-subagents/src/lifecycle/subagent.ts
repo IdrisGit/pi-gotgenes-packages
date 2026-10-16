@@ -547,7 +547,7 @@ export class Subagent {
 		}));
 
 		try {
-			this.completeResume(await subagentSession.resumeTurnLoop(prompt, {
+			this.completeResume(await subagentSession.runTurnLoop(prompt, {
 				signal: run.signal,
 				onTurnBudget: (budget) => { this.state.setTurnBudget(budget); },
 			}));

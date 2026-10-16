@@ -37,17 +37,10 @@ export interface TurnLoopResult {
   turnBudget: TurnBudget;
 }
 
-/** Per-call options for the initial run's turn loop. */
+/** Per-call options for one run's turn loop. */
 export interface TurnLoopOptions {
   signal?: AbortSignal;
-  /** Receives the budget at the start and after every turn boundary that changes it. */
-  onTurnBudget?: (budget: TurnBudget) => void;
-}
-
-/** Per-call options for a resumed run's turn loop. */
-export interface ResumeTurnLoopOptions {
-  signal?: AbortSignal;
-  /** Receives the resumed run's budget at the start and after every turn boundary that changes it. */
+  /** Receives the run's budget at the start and after every turn boundary that changes it. */
   onTurnBudget?: (budget: TurnBudget) => void;
 }
 
@@ -62,7 +55,7 @@ export interface SubagentSessionMeta {
   agentName: string;
   /** The limits every run of this session is held to, resolved at creation. */
   turnLimits: TurnLimits;
-  /** Parent context prepended to the run prompt, captured at spawn time. */
+  /** Parent context prepended to the first run's prompt, captured at spawn time. */
   parentContext: string | undefined;
   lifecycle: ChildLifecyclePublisher;
 }
@@ -72,6 +65,12 @@ export interface SubagentSessionMeta {
  */
 export class SubagentSession {
   private disposed = false;
+
+  /**
+   * Set as the session's first run starts, settled or not: only that run
+   * carries the parent context and announces the child's completion.
+   */
+  private hasRun = false;
 
   /**
    * How the session's last assistant turn ended, tracked for the session's
@@ -113,22 +112,31 @@ export class SubagentSession {
     return this._session.thinkingLevel;
   }
 
-  /** Drive the initial run's turn loop; emits `completed` on success. */
+  /**
+   * Drive one run's turn loop under a fresh budget at the session's limits:
+   * the initial run, or a resume, whose parent asked for more work and for
+   * which an exhausted run's remainder would be none.
+   *
+   * The session's first run prefixes the parent context captured at spawn and
+   * emits `completed` once its prompt resolves; a later run does neither.
+   */
   async runTurnLoop(prompt: string, opts: TurnLoopOptions): Promise<TurnLoopResult> {
+    const firstRun = !this.hasRun;
+    this.hasRun = true;
     const tracker = new TurnBudgetTracker(this.meta.turnLimits);
-
-    // Prepend parent context if it was captured at spawn time.
-    const effectivePrompt = this.meta.parentContext
-      ? this.meta.parentContext + prompt
-      : prompt;
-
-    const responseText = await this.promptForAnswer(effectivePrompt, tracker, opts);
-    this.meta.lifecycle.completed({
-      sessionDir: this.meta.sessionDir,
-      agentName: this.meta.agentName,
-      turnBudget: tracker.budget,
-    });
+    const responseText = await this.promptForAnswer(firstRun ? this.withParentContext(prompt) : prompt, tracker, opts);
+    if (firstRun) {
+      this.meta.lifecycle.completed({
+        sessionDir: this.meta.sessionDir,
+        agentName: this.meta.agentName,
+        turnBudget: tracker.budget,
+      });
+    }
     return { responseText, turnBudget: tracker.budget };
+  }
+
+  private withParentContext(prompt: string): string {
+    return this.meta.parentContext ? this.meta.parentContext + prompt : prompt;
   }
 
   /**
@@ -142,7 +150,7 @@ export class SubagentSession {
   private async promptForAnswer(
     prompt: string,
     tracker: TurnBudgetTracker,
-    opts: ResumeTurnLoopOptions,
+    opts: TurnLoopOptions,
   ): Promise<string> {
     if (opts.signal?.aborted) return "";
     const session = this._session;
@@ -207,18 +215,6 @@ export class SubagentSession {
       },
       { triggerTurn: false },
     );
-  }
-
-  /**
-   * Re-prompt the same session (resume); does not emit `completed`.
-   *
-   * The resumed run gets a fresh budget under the session's limits: the parent
-   * asked for more work, and an exhausted run's remainder would be none.
-   */
-  async resumeTurnLoop(prompt: string, opts: ResumeTurnLoopOptions): Promise<TurnLoopResult> {
-    const tracker = new TurnBudgetTracker(this.meta.turnLimits);
-    const responseText = await this.promptForAnswer(prompt, tracker, opts);
-    return { responseText, turnBudget: tracker.budget };
   }
 
   /** Deliver a steer to the live session. */

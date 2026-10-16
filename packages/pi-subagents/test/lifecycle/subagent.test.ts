@@ -54,7 +54,7 @@ function defaultFactory(): SessionFactory {
 }
 
 /**
- * Park a stub's turn loop (`runTurnLoop` or `resumeTurnLoop`) until its signal
+ * Park a stub's turn loop until its signal
  * fires, recording what it was handed and whether that signal was already spent
  * on arrival. The loop's signal is the run's lever as the session sees it.
  */
@@ -986,7 +986,7 @@ describe("Subagent — workspace hold for a declared question", () => {
 
 	it("holds the workspace when a resumed run wrapped up at its turn limit and declared another question", async () => {
 		const { agent, workspace, stub, ask } = await heldWorkspaceAgent();
-		stub.resumeTurnLoop.mockImplementation(() => {
+		stub.runTurnLoop.mockImplementation(() => {
 			ask("And the fallback?");
 			return Promise.resolve(turnLoopResult({ responseText: "Partway.", turnBudget: WARNED }));
 		});
@@ -1003,7 +1003,7 @@ describe("Subagent — workspace hold for a declared question", () => {
 describe("Subagent — disposing a held workspace", () => {
 	it("disposes when the resumed child answers without asking again", async () => {
 		const { agent, workspace, stub } = await heldWorkspaceAgent();
-		stub.resumeTurnLoop.mockResolvedValue(turnLoopResult({ responseText: "Used the project config. Done." }));
+		stub.runTurnLoop.mockResolvedValue(turnLoopResult({ responseText: "Used the project config. Done." }));
 
 		await agent.resume("The project one.");
 
@@ -1013,7 +1013,7 @@ describe("Subagent — disposing a held workspace", () => {
 
 	it("keeps holding when the resumed child declares another question", async () => {
 		const { agent, workspace, stub, ask } = await heldWorkspaceAgent();
-		stub.resumeTurnLoop.mockImplementation(() => {
+		stub.runTurnLoop.mockImplementation(() => {
 			ask("And the fallback?");
 			return Promise.resolve(turnLoopResult({ responseText: "Thanks." }));
 		});
@@ -1026,7 +1026,7 @@ describe("Subagent — disposing a held workspace", () => {
 
 	it("disposes as aborted when the resumed child asks again but exhausts its budget", async () => {
 		const { agent, workspace, stub, ask } = await heldWorkspaceAgent();
-		stub.resumeTurnLoop.mockImplementation(() => {
+		stub.runTurnLoop.mockImplementation(() => {
 			ask("And the fallback?");
 			return Promise.resolve(turnLoopResult({ responseText: "Partway.", turnBudget: EXHAUSTED }));
 		});
@@ -1040,7 +1040,7 @@ describe("Subagent — disposing a held workspace", () => {
 
 	it("disposes best-effort when the resume throws", async () => {
 		const { agent, workspace, stub } = await heldWorkspaceAgent();
-		stub.resumeTurnLoop.mockRejectedValue(new Error("resume exploded"));
+		stub.runTurnLoop.mockRejectedValue(new Error("resume exploded"));
 
 		await expect(agent.resume("The project one.")).resolves.toBeUndefined();
 
@@ -1119,7 +1119,7 @@ describe("Subagent — workspaceNotice", () => {
 
 	it("holds the addendum a failed resume's disposal reported", async () => {
 		const { agent, stub } = await heldWorkspaceAgent();
-		stub.resumeTurnLoop.mockRejectedValue(new Error("resume exploded"));
+		stub.runTurnLoop.mockRejectedValue(new Error("resume exploded"));
 		await agent.resume("the answer");
 		expect(agent.status).toBe("error");
 		expect(agent.workspaceNotice).toBe(ADDENDUM);
@@ -1220,7 +1220,7 @@ describe("Subagent — announcing a notice produced after the result was deliver
 
 	it("does not announce for a failed resume, whose own notification carries it", async () => {
 		const { agent, stub, onWorkspaceNotice } = await heldAgentWithObserver();
-		stub.resumeTurnLoop.mockRejectedValue(new Error("resume exploded"));
+		stub.runTurnLoop.mockRejectedValue(new Error("resume exploded"));
 		await agent.resume("the answer");
 		expect(agent.workspaceNotice).toBe(ADDENDUM);
 		expect(onWorkspaceNotice).not.toHaveBeenCalled();
@@ -1349,7 +1349,7 @@ describe("Subagent — the ask-back recorder", () => {
 		const { factory, stub, ask } = createFactory();
 		const agent = createRunnableAgent({ createSubagentSession: factory });
 		await agent.run();
-		stub.resumeTurnLoop.mockImplementation(() => {
+		stub.runTurnLoop.mockImplementation(() => {
 			ask("Which config wins?");
 			return Promise.reject(new Error("boom"));
 		});
@@ -1613,9 +1613,10 @@ describe("Subagent.waitUntilSettled()", () => {
 
 	it("reports the waited run's outcome when a resume replaced it before the wait returned", async () => {
 		const stub = createSubagentSessionStub();
-		stub.runTurnLoop.mockResolvedValue(turnLoopResult({ responseText: "first result" }));
 		const resumed = Promise.withResolvers<TurnLoopResult>();
-		stub.resumeTurnLoop.mockReturnValue(resumed.promise);
+		stub.runTurnLoop
+			.mockResolvedValueOnce(turnLoopResult({ responseText: "first result" }))
+			.mockReturnValueOnce(resumed.promise);
 		const agent = makeSubagent({
 			status: "running",
 			execution: makeStubExecution({
@@ -1690,12 +1691,12 @@ describe("Subagent — ask-back", () => {
 
 	it("completes the round trip: ask, answer by resuming, continue", async () => {
 		const { agent, stub } = await runToOutcome({ responseText: "", question: "Which config?" });
-		stub.resumeTurnLoop.mockResolvedValue(turnLoopResult({ responseText: "Used the project config. Done." }));
+		stub.runTurnLoop.mockResolvedValue(turnLoopResult({ responseText: "Used the project config. Done." }));
 		expect(agent.pendingQuestion).toBe("Which config?");
 
 		await agent.resume("The project one.");
 
-		expect(stub.resumeTurnLoop).toHaveBeenCalledWith("The project one.", expect.objectContaining({ signal: expect.any(AbortSignal) }));
+		expect(stub.runTurnLoop).toHaveBeenLastCalledWith("The project one.", expect.objectContaining({ signal: expect.any(AbortSignal) }));
 		expect(agent.status).toBe("completed");
 		expect(agent.result).toBe("Used the project config. Done.");
 		// The question was answered, so it no longer stands.
@@ -1704,7 +1705,7 @@ describe("Subagent — ask-back", () => {
 
 	it("records a follow-up question a resumed run declares", async () => {
 		const { agent, stub, ask } = await runToOutcome({ responseText: "", question: "Which config?" });
-		stub.resumeTurnLoop.mockImplementation(() => {
+		stub.runTurnLoop.mockImplementation(() => {
 			ask("And the fallback?");
 			return Promise.resolve(turnLoopResult({ responseText: "Thanks." }));
 		});
@@ -1719,22 +1720,22 @@ describe("Subagent — ask-back", () => {
 describe("Subagent.resume() — happy path", () => {
 	it("transitions to completed and sets result from the resume response", async () => {
 		const { agent, stub } = createResumableAgent();
-		stub.resumeTurnLoop.mockResolvedValue(turnLoopResult({ responseText: "resumed" }));
+		stub.runTurnLoop.mockResolvedValue(turnLoopResult({ responseText: "resumed" }));
 		await agent.resume("continue");
 		expect(agent.status).toBe("completed");
 		expect(agent.result).toBe("resumed");
 	});
 
-	it("hands resumeTurnLoop the record's own signal, not the caller's", async () => {
+	it("hands the resumed turn loop the record's own signal, not the caller's", async () => {
 		const { agent, stub } = createResumableAgent();
 		const callerSignal = new AbortController().signal;
 		let loopSignal: AbortSignal | undefined;
-		stub.resumeTurnLoop.mockImplementation((_prompt: string, { signal }: { signal?: AbortSignal }) => {
+		stub.runTurnLoop.mockImplementation((_prompt: string, { signal }: { signal?: AbortSignal }) => {
 			loopSignal = signal;
 			return Promise.resolve(turnLoopResult({ responseText: "resumed" }));
 		});
 		await agent.resume("continue", callerSignal);
-		expect(stub.resumeTurnLoop).toHaveBeenCalledExactlyOnceWith("continue", expect.objectContaining({ signal: expect.any(AbortSignal) }));
+		expect(stub.runTurnLoop).toHaveBeenCalledExactlyOnceWith("continue", expect.objectContaining({ signal: expect.any(AbortSignal) }));
 		// The caller's signal is wired through abort(); the loop runs under the
 		// record's own lever, so abort(id) reaches it too.
 		expect(loopSignal).not.toBe(callerSignal);
@@ -1752,12 +1753,12 @@ describe("Subagent.resume() — turn budget", () => {
 		const { agent, stub } = createResumableAgent();
 		const fresh: TurnBudget = { maxTurns: 5, used: 0, phase: "within" };
 		const gate = Promise.withResolvers<TurnLoopResult>();
-		stub.resumeTurnLoop.mockImplementation((_prompt: string, { onTurnBudget }: { onTurnBudget?: (budget: TurnBudget) => void }) => {
+		stub.runTurnLoop.mockImplementation((_prompt: string, { onTurnBudget }: { onTurnBudget?: (budget: TurnBudget) => void }) => {
 			onTurnBudget?.(fresh);
 			return gate.promise;
 		});
 		const resumed = agent.resume("continue");
-		await vi.waitFor(() => expect(stub.resumeTurnLoop).toHaveBeenCalled());
+		await vi.waitFor(() => expect(stub.runTurnLoop).toHaveBeenCalled());
 		expect(agent.turnBudget).toEqual(fresh);
 		gate.resolve(turnLoopResult({ turnBudget: fresh }));
 		await resumed;
@@ -1766,7 +1767,7 @@ describe("Subagent.resume() — turn budget", () => {
 	it("ends aborted, and notifies the observer, when the resume exhausts its budget", async () => {
 		const onResumeFinished = vi.fn();
 		const { agent, stub } = createResumableAgent({ observer: { onResumeFinished } });
-		stub.resumeTurnLoop.mockResolvedValue(turnLoopResult({ responseText: "partial", turnBudget: EXHAUSTED }));
+		stub.runTurnLoop.mockResolvedValue(turnLoopResult({ responseText: "partial", turnBudget: EXHAUSTED }));
 		await agent.resume("continue");
 		expect(agent.status).toBe("aborted");
 		expect(agent.result).toBe("partial");
@@ -1777,7 +1778,7 @@ describe("Subagent.resume() — turn budget", () => {
 describe("Subagent.resume() — cancellation", () => {
 	it("aborting the record signals the resumed turn loop", async () => {
 		const { agent, stub } = createResumableAgent();
-		const loop = parkLoopUntilSignalled(stub.resumeTurnLoop);
+		const loop = parkLoopUntilSignalled(stub.runTurnLoop);
 
 		const resumed = agent.resume("continue");
 		expect(agent.abort()).toBe(true);
@@ -1790,7 +1791,7 @@ describe("Subagent.resume() — cancellation", () => {
 
 	it("a caller signal cancels through the record, which reads stopped", async () => {
 		const { agent, stub } = createResumableAgent();
-		const loop = parkLoopUntilSignalled(stub.resumeTurnLoop);
+		const loop = parkLoopUntilSignalled(stub.runTurnLoop);
 		const caller = new AbortController();
 
 		const resumed = agent.resume("continue", caller.signal);
@@ -1810,7 +1811,7 @@ describe("Subagent.resume() — cancellation", () => {
 		agent.abort();
 		await run;
 		expect(first.signal?.aborted).toBe(true);
-		const loop = parkLoopUntilSignalled(stub.resumeTurnLoop);
+		const loop = parkLoopUntilSignalled(stub.runTurnLoop);
 
 		const resumed = agent.resume("continue");
 		expect(agent.abort()).toBe(true);
@@ -1883,7 +1884,7 @@ describe("Subagent — a signal that already fired", () => {
 			const { agent, stub } = createResumableAgent({ observer: { onResumeFinished } });
 			// A real loop handed a fired signal returns at once without a turn.
 			let abortedAtEntry: boolean | undefined;
-			stub.resumeTurnLoop.mockImplementation((_prompt: string, { signal }: { signal?: AbortSignal }) => {
+			stub.runTurnLoop.mockImplementation((_prompt: string, { signal }: { signal?: AbortSignal }) => {
 				abortedAtEntry = signal?.aborted;
 				return Promise.resolve(turnLoopResult({ responseText: "" }));
 			});
@@ -1901,7 +1902,7 @@ describe("Subagent.resume() — observer lifecycle", () => {
 	it("accumulates usage and compactions from session events during resume", async () => {
 		const session = createMockSession();
 		const stub = createSubagentSessionStub(session);
-		stub.resumeTurnLoop.mockImplementation(async () => {
+		stub.runTurnLoop.mockImplementation(async () => {
 			emitResumeUsageAndCompaction(session);
 			return turnLoopResult({ responseText: "second" });
 		});
@@ -1918,7 +1919,7 @@ describe("Subagent.resume() — observer lifecycle", () => {
 			onCompacted: (_agent: Subagent, info: CompactionInfo) => seen.push({ reason: info.reason, tokensBefore: info.tokensBefore }),
 		};
 		const stub = createSubagentSessionStub(session);
-		stub.resumeTurnLoop.mockImplementation(async () => {
+		stub.runTurnLoop.mockImplementation(async () => {
 			session.emit({ type: "compaction_end", aborted: false, result: { tokensBefore: 123 }, reason: "threshold" });
 			return turnLoopResult({ responseText: "second" });
 		});
@@ -1953,7 +1954,7 @@ describe("Subagent.resume() — observer lifecycle", () => {
 	it("fires observer.onResumeStarted even when the resumed run fails", async () => {
 		const onResumeStarted = vi.fn();
 		const stub = createSubagentSessionStub();
-		stub.resumeTurnLoop.mockRejectedValue(new Error("resume exploded"));
+		stub.runTurnLoop.mockRejectedValue(new Error("resume exploded"));
 		const { agent } = createResumableAgent({ observer: { onResumeStarted }, stub });
 
 		await agent.resume("continue");
@@ -1972,7 +1973,7 @@ describe("Subagent.resume() — observer lifecycle", () => {
 	it("fires observer.onResumeFinished when the resume errors", async () => {
 		const onResumeFinished = vi.fn();
 		const stub = createSubagentSessionStub();
-		stub.resumeTurnLoop.mockRejectedValue(new Error("resume exploded"));
+		stub.runTurnLoop.mockRejectedValue(new Error("resume exploded"));
 		const { agent } = createResumableAgent({ observer: { onResumeFinished }, stub });
 		await agent.resume("continue");
 		expect(onResumeFinished).toHaveBeenCalledExactlyOnceWith(agent);
@@ -2087,7 +2088,7 @@ describe("Subagent — provider failures reach the record", () => {
 	});
 
 	// The resume half of the same path: a run that succeeded, then a resume whose
-	// provider errored. Without the resumeTurnLoop read the record would be marked
+	// provider errored. Without the resumed loop's read the record would be marked
 	// completed carrying "the first answer" — the previous turn's work, presented
 	// as the answer to the resume prompt.
 	it("lands a resume's provider error on the record instead of the prior answer", async () => {
@@ -2129,9 +2130,9 @@ describe("Subagent — provider failures reach the record", () => {
 });
 
 describe("Subagent.resume() — error handling", () => {
-	it("transitions to error without throwing when resumeTurnLoop rejects", async () => {
+	it("transitions to error without throwing when the resumed turn loop rejects", async () => {
 		const stub = createSubagentSessionStub();
-		stub.resumeTurnLoop.mockRejectedValue(new Error("resume exploded"));
+		stub.runTurnLoop.mockRejectedValue(new Error("resume exploded"));
 		const { agent } = createResumableAgent({ stub });
 		await agent.resume("more");
 		expect(agent.status).toBe("error");
@@ -2141,7 +2142,7 @@ describe("Subagent.resume() — error handling", () => {
 	it("releases the observer subscription after resume errors", async () => {
 		const session = createMockSession();
 		const stub = createSubagentSessionStub(session);
-		stub.resumeTurnLoop.mockRejectedValue(new Error("boom"));
+		stub.runTurnLoop.mockRejectedValue(new Error("boom"));
 		const { agent } = createResumableAgent({ session, stub });
 		await agent.resume("more");
 		session.emit({ type: "tool_execution_end" });
@@ -2161,7 +2162,7 @@ describe("Subagent.resume() — awaitable handle", () => {
 		const firstRun = agent.promise;
 		await firstRun;
 		const { promise: resuming, resolve: finishResume } = Promise.withResolvers<TurnLoopResult>();
-		stub.resumeTurnLoop.mockReturnValue(resuming);
+		stub.runTurnLoop.mockReturnValue(resuming);
 
 		const returned = agent.resume("continue");
 

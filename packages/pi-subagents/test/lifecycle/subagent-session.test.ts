@@ -535,21 +535,44 @@ describe("SubagentSession — runTurnLoop provider failures", () => {
   });
 });
 
-describe("SubagentSession — resumeTurnLoop", () => {
+describe("SubagentSession — a later run", () => {
   it("re-prompts the session and returns the final assistant text", async () => {
     const { session } = createSession("RESUMED");
     const { sub } = makeSubagentSession(session);
     await sub.runTurnLoop("go", {});
-    const result = await sub.resumeTurnLoop("Continue", {});
+    const result = await sub.runTurnLoop("Continue", {});
     expect(session.prompt).toHaveBeenLastCalledWith("Continue");
     expect(result).toEqual({ responseText: "RESUMED", turnBudget: { used: 0, phase: "within" } });
+  });
+
+  it("takes no parent-context prefix, which the first run already delivered", async () => {
+    const { session } = createSession("RESUMED");
+    const { sub } = makeSubagentSession(session, { parentContext: "CTX\n" });
+    await sub.runTurnLoop("go", {});
+    await sub.runTurnLoop("Continue", {});
+    expect(session.prompt).toHaveBeenNthCalledWith(1, "CTX\ngo");
+    expect(session.prompt).toHaveBeenLastCalledWith("Continue");
+  });
+
+  // The first run is the session's first call, whether or not it settled: a
+  // later run neither delivers the parent context again nor announces completion.
+  it("stays a later run when the first run threw", async () => {
+    const { session } = createSession("RESUMED");
+    const { sub } = makeSubagentSession(session, { parentContext: "CTX\n", lifecycle });
+    session.prompt.mockRejectedValueOnce(new Error("prompt failed"));
+    await expect(sub.runTurnLoop("go", {})).rejects.toThrow("prompt failed");
+
+    await sub.runTurnLoop("Continue", {});
+
+    expect(session.prompt).toHaveBeenLastCalledWith("Continue");
+    expect(lifecycle.completed).not.toHaveBeenCalled();
   });
 
   it("does not emit completed or disposed", async () => {
     const { session } = createSession("RESUMED");
     const { sub } = makeSubagentSession(session, { lifecycle });
     await sub.runTurnLoop("go", {});
-    await sub.resumeTurnLoop("Continue", {});
+    await sub.runTurnLoop("Continue", {});
     // Once, for the first run alone.
     expect(lifecycle.completed).toHaveBeenCalledOnce();
     expect(lifecycle.disposed).not.toHaveBeenCalled();
@@ -563,7 +586,7 @@ describe("SubagentSession — resumeTurnLoop", () => {
     const { sub } = makeSubagentSession(session);
     await sub.runTurnLoop("go", {});
     programMessages(session, [providerErrorMessage("401 invalid api key")]);
-    await expect(sub.resumeTurnLoop("Continue", {})).rejects.toThrow("401 invalid api key");
+    await expect(sub.runTurnLoop("Continue", {})).rejects.toThrow("401 invalid api key");
   });
 
   it("does not report an earlier turn's text as the resumed answer", async () => {
@@ -572,7 +595,7 @@ describe("SubagentSession — resumeTurnLoop", () => {
     const { sub } = makeSubagentSession(session);
     await sub.runTurnLoop("go", {});
     programMessages(session, [providerErrorMessage("stream disconnected")]);
-    await expect(sub.resumeTurnLoop("Continue", {})).rejects.toThrow("stream disconnected");
+    await expect(sub.runTurnLoop("Continue", {})).rejects.toThrow("stream disconnected");
   });
 
   it("rejects when overflow recovery stripped the resumed turn's error", async () => {
@@ -581,7 +604,7 @@ describe("SubagentSession — resumeTurnLoop", () => {
     const { sub } = makeSubagentSession(session);
     await sub.runTurnLoop("go", {});
     programStrippedFailure(session, "503 upstream unavailable");
-    await expect(sub.resumeTurnLoop("Continue", {})).rejects.toThrow("503 upstream unavailable");
+    await expect(sub.runTurnLoop("Continue", {})).rejects.toThrow("503 upstream unavailable");
   });
 
   // `AgentSession.prompt()` resolves without running a turn when an extension
@@ -594,7 +617,7 @@ describe("SubagentSession — resumeTurnLoop", () => {
     session.messages.push(providerErrorMessage("429 rate limit exceeded"));
     session.prompt = vi.fn(async () => {});
     const { sub } = makeSubagentSession(session);
-    await expect(sub.resumeTurnLoop("/skill:audit go", {})).rejects.toThrow(
+    await expect(sub.runTurnLoop("/skill:audit go", {})).rejects.toThrow(
       "429 rate limit exceeded",
     );
   });
@@ -611,7 +634,7 @@ describe("SubagentSession — resumeTurnLoop", () => {
     await expect(sub.runTurnLoop("go", {})).rejects.toThrow("prompt is too long");
 
     session.prompt = vi.fn(async () => {});
-    await expect(sub.resumeTurnLoop("/skill:audit go", {})).rejects.toThrow("prompt is too long");
+    await expect(sub.runTurnLoop("/skill:audit go", {})).rejects.toThrow("prompt is too long");
   });
 
   it("resolves when the resume's own turn succeeded after an earlier failure", async () => {
@@ -621,18 +644,18 @@ describe("SubagentSession — resumeTurnLoop", () => {
       assistantMessage("the second answer", "stop"),
     ]);
     const { sub } = makeSubagentSession(session);
-    await expect(sub.resumeTurnLoop("Continue", {})).resolves.toEqual({ responseText: "the second answer", turnBudget: { used: 0, phase: "within" } });
+    await expect(sub.runTurnLoop("Continue", {})).resolves.toEqual({ responseText: "the second answer", turnBudget: { used: 0, phase: "within" } });
   });
 
   it("resolves normally when the resumed turn did not error", async () => {
     const { session } = createSession("RESUMED");
     const { sub } = makeSubagentSession(session);
     await sub.runTurnLoop("go", {});
-    await expect(sub.resumeTurnLoop("Continue", {})).resolves.toEqual({ responseText: "RESUMED", turnBudget: { used: 0, phase: "within" } });
+    await expect(sub.runTurnLoop("Continue", {})).resolves.toEqual({ responseText: "RESUMED", turnBudget: { used: 0, phase: "within" } });
   });
 });
 
-describe("SubagentSession — resumeTurnLoop turn budget", () => {
+describe("SubagentSession — a later run's turn budget", () => {
   it("gives a resume a fresh budget with the original run's ceiling", async () => {
     const { session } = createSession("done");
     programTurns(session, 5);
@@ -643,7 +666,7 @@ describe("SubagentSession — resumeTurnLoop turn budget", () => {
     session.abort.mockClear();
     programTurns(session, [{}, { stopReason: "stop", toolResults: 0 }]);
     const reports: unknown[] = [];
-    const resumed = await sub.resumeTurnLoop("Continue", { onTurnBudget: (budget) => reports.push(budget) });
+    const resumed = await sub.runTurnLoop("Continue", { onTurnBudget: (budget) => reports.push(budget) });
     expect(reports[0]).toEqual({ maxTurns: 3, used: 0, phase: "within" });
     expect(resumed.turnBudget).toEqual({ maxTurns: 3, used: 2, phase: "within" });
     expect(session.abort).not.toHaveBeenCalled();
@@ -656,7 +679,7 @@ describe("SubagentSession — resumeTurnLoop turn budget", () => {
     await sub.runTurnLoop("go", {});
 
     programTurns(session, 4);
-    const resumed = await sub.resumeTurnLoop("Continue", {});
+    const resumed = await sub.runTurnLoop("Continue", {});
     expect(session.abort).toHaveBeenCalledOnce();
     expect(resumed.turnBudget).toEqual({ maxTurns: 2, used: 2, phase: "exhausted" });
   });
@@ -671,7 +694,7 @@ describe("SubagentSession — a turn loop whose signal already fired", () => {
     return controller.signal;
   }
 
-  describe("runTurnLoop", () => {
+  describe("the first run", () => {
     it("takes no turn and returns no text", async () => {
       const { session } = createSession("full answer");
       const { sub } = makeSubagentSession(session);
@@ -697,12 +720,12 @@ describe("SubagentSession — a turn loop whose signal already fired", () => {
     });
   });
 
-  describe("resumeTurnLoop", () => {
+  describe("a later run", () => {
     it("takes no turn and does not report the previous run's answer", async () => {
       const { session } = createSession("full answer");
       const { sub } = makeSubagentSession(session);
       await sub.runTurnLoop("go", {});
-      const result = await sub.resumeTurnLoop("Continue", { signal: firedSignal() });
+      const result = await sub.runTurnLoop("Continue", { signal: firedSignal() });
       // Prompted once, for the first run's answer; the resume took no turn.
       expect(session.prompt).toHaveBeenCalledOnce();
       expect(result).toEqual({ responseText: "", turnBudget: { used: 0, phase: "within" } });
@@ -712,7 +735,7 @@ describe("SubagentSession — a turn loop whose signal already fired", () => {
       const { session } = createSession("full answer");
       session.messages.push(providerErrorMessage("401 invalid api key"));
       const { sub } = makeSubagentSession(session);
-      await expect(sub.resumeTurnLoop("Continue", { signal: firedSignal() })).resolves.toEqual({
+      await expect(sub.runTurnLoop("Continue", { signal: firedSignal() })).resolves.toEqual({
         responseText: "",
         turnBudget: { used: 0, phase: "within" },
       });
