@@ -73,13 +73,48 @@ export function detectShadowedCommandEffects(
   declared: DeclaredCommandEffects,
   coreWords: ReadonlySet<string>,
 ): string | undefined {
-  const shadowed = Object.keys(declared)
-    .filter((command) => coreWords.has(command))
-    .sort();
+  const shadowed = declaredAmong(declared, coreWords);
   if (shadowed.length === 0) return undefined;
 
-  const names = shadowed.map((command) => `'${command}'`).join(" and ");
+  const names = quotedList(shadowed);
   return shadowed.length === 1
     ? `commandEffects declares ${names}, a pure-reader core command. The core decides its effects, so the declaration is ignored; remove it.`
     : `commandEffects declares ${names}, pure-reader core commands. The core decides their effects, so the declarations are ignored; remove them.`;
+}
+
+/**
+ * Report the declarations keyed by a wrapper (`xargs`, `sudo`, `env`, `time`,
+ * a shell, …), or `undefined` when none is.
+ *
+ * A wrapper's arguments carry the command it runs, so a declaration for one
+ * would describe the inner command's operands; the bash analysis therefore
+ * never reads it (ADR 0013 §11), and saying so at load keeps that from being
+ * a silent no-op. `wrapperWords` is injected for the same reason `coreWords`
+ * is.
+ */
+export function detectWrapperCommandEffects(
+  declared: DeclaredCommandEffects,
+  wrapperWords: ReadonlySet<string>,
+): string | undefined {
+  const wrappers = declaredAmong(declared, wrapperWords);
+  if (wrappers.length === 0) return undefined;
+
+  const names = quotedList(wrappers);
+  return wrappers.length === 1
+    ? `commandEffects declares ${names}, a wrapper. A declaration describes a command's own arguments, never the command a wrapper runs, so it is ignored; remove it.`
+    : `commandEffects declares ${names}, wrappers. A declaration describes a command's own arguments, never the command a wrapper runs, so they are ignored; remove them.`;
+}
+
+/** The declared commands that are members of `words`, sorted. */
+function declaredAmong(
+  declared: DeclaredCommandEffects,
+  words: ReadonlySet<string>,
+): string[] {
+  return Object.keys(declared)
+    .filter((command) => words.has(command))
+    .sort();
+}
+
+function quotedList(commands: readonly string[]): string {
+  return commands.map((command) => `'${command}'`).join(" and ");
 }

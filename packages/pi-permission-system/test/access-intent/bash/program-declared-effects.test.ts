@@ -204,6 +204,26 @@ describe("BashProgram with commandEffects declarations", () => {
       ]);
     });
 
+    it.each([
+      ["xargs", "read", "xargs rm ~/x"],
+      ["env", "read", "env FOO=1 rm ~/x"],
+      ["sudo", "inert", "sudo rm ~/x"],
+      ["time", "inert", "time rm ~/x"],
+      ["timeout", "inert", "timeout 5 rm ~/x"],
+      ["bash", "read", "bash ~/x"],
+      ["nohup", "inert", "nohup rm ~/x"],
+    ] as const)(
+      "ignores a declaration keyed by the wrapper %s (%s)",
+      async (wrapper, kind, command) => {
+        const declared = declare({
+          [wrapper]: { effects: kind === "read" ? "read" : [] },
+        });
+        expect(await externalsOf(command, declared)).toEqual([
+          { path: HOME_X, effect: UNPROVEN_EFFECT },
+        ]);
+      },
+    );
+
     it("leaves the wrapped command's operands unproven", async () => {
       expect(await externalsOf("xargs git log ~/x")).toEqual([
         { path: HOME_X, effect: UNPROVEN_EFFECT },

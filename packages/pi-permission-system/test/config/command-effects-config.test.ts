@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   detectShadowedCommandEffects,
+  detectWrapperCommandEffects,
   foldDeclaredCommandEffects,
   NO_DECLARED_COMMAND_EFFECTS,
 } from "#src/config/command-effects-config";
@@ -106,6 +107,44 @@ describe("detectShadowedCommandEffects", () => {
 
     expect(detectShadowedCommandEffects(declared, CORE)).toBe(
       "commandEffects declares 'sed' and 'sort', pure-reader core commands. The core decides their effects, so the declarations are ignored; remove them.",
+    );
+  });
+});
+
+describe("detectWrapperCommandEffects", () => {
+  const WRAPPERS = new Set(["xargs", "sudo", "env"]);
+
+  it("stays silent when no declaration names a wrapper", () => {
+    const declared = foldDeclaredCommandEffects(
+      NO_DECLARED_COMMAND_EFFECTS,
+      { git: { effects: "read" } },
+      "global",
+    );
+
+    expect(detectWrapperCommandEffects(declared, WRAPPERS)).toBeUndefined();
+  });
+
+  it("names one wrapper declaration", () => {
+    const declared = foldDeclaredCommandEffects(
+      NO_DECLARED_COMMAND_EFFECTS,
+      { xargs: { effects: "read" }, git: { effects: "read" } },
+      "global",
+    );
+
+    expect(detectWrapperCommandEffects(declared, WRAPPERS)).toBe(
+      "commandEffects declares 'xargs', a wrapper. A declaration describes a command's own arguments, never the command a wrapper runs, so it is ignored; remove it.",
+    );
+  });
+
+  it("names every wrapper declaration in one message, sorted", () => {
+    const declared = foldDeclaredCommandEffects(
+      NO_DECLARED_COMMAND_EFFECTS,
+      { sudo: { effects: [] }, env: { effects: "read" } },
+      "project",
+    );
+
+    expect(detectWrapperCommandEffects(declared, WRAPPERS)).toBe(
+      "commandEffects declares 'env' and 'sudo', wrappers. A declaration describes a command's own arguments, never the command a wrapper runs, so they are ignored; remove them.",
     );
   });
 });

@@ -1,6 +1,9 @@
 import { basename } from "node:path";
 import { type TokenEffect, UNPROVEN_EFFECT } from "#src/access-intent/effect";
-import type { DeclaredCommandEffects } from "#src/config/command-effects-config";
+import {
+  type DeclaredCommandEffects,
+  NO_DECLARED_COMMAND_EFFECTS,
+} from "#src/config/command-effects-config";
 import { attributeCommandOperands } from "./command-effects";
 import type { OperandAttribution } from "./declared-command-effects";
 import { EXECUTION_HOST_TYPES, forEachExecutionIn } from "./nested-execution";
@@ -16,6 +19,7 @@ import {
   redirectEffectForDestination,
   redirectTargetIndex,
 } from "./redirect-analysis";
+import { WRAPPER_COMMAND_NAMES } from "./wrapper-analysis";
 
 /**
  * What a collected token is, as the collector that produced it established.
@@ -128,14 +132,18 @@ export function collectCommandTokens(
   words: WordReader,
   declared: DeclaredCommandEffects,
 ): PathToken[] {
+  const commandName = extractCommandName(node, words);
   const operand = operandStampOf(
     attributeCommandOperands(
       extractCommandWord(node, words) ?? "",
       commandArgumentWords(node, words),
-      declared,
+      // A wrapper's arguments carry the command it runs, which no declaration
+      // describes (ADR 0013 §11), so a wrapper is attributed by the core alone.
+      commandName !== undefined && WRAPPER_COMMAND_NAMES.has(commandName)
+        ? NO_DECLARED_COMMAND_EFFECTS
+        : declared,
     ),
   );
-  const commandName = extractCommandName(node, words);
   const config = commandName
     ? PATTERN_FIRST_COMMANDS.get(commandName)
     : undefined;

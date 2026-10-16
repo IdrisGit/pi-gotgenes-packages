@@ -797,6 +797,20 @@ const INDIRECTION_WRAPPER_NAMES = new Set([
 ]);
 
 /**
+ * Every command name whose unit the wrapper floor can apply to by name: `eval`,
+ * the shells, and the indirection wrappers.
+ *
+ * A user's `commandEffects` declaration never describes one (ADR 0013 §11): its
+ * arguments carry the command it runs, so a declared `xargs` or `sudo` would
+ * attribute, or withdraw, the inner command's operands.
+ */
+export const WRAPPER_COMMAND_NAMES: ReadonlySet<string> = new Set([
+  "eval",
+  ...SHELL_WRAPPER_NAMES,
+  ...INDIRECTION_WRAPPER_NAMES,
+]);
+
+/**
  * Search tools that invoke a command per result only when an exec flag is
  * present; a bare search runs no subcommand. Floored only when an argument
  * exactly matches one of the tool's exec flags. Extend by adding a tool with

@@ -11,6 +11,7 @@ import type { DebugReviewLogger } from "#src/logging/session-logger";
 import {
   type DeclaredCommandEffects,
   detectShadowedCommandEffects,
+  detectWrapperCommandEffects,
   NO_DECLARED_COMMAND_EFFECTS,
 } from "./command-effects-config";
 import type { ConfigIssueSource } from "./config-issue-reporter";
@@ -73,6 +74,8 @@ export interface ConfigStoreDeps {
   logger: DebugReviewLogger;
   /** The pure-reader core's words, which a `commandEffects` declaration cannot override. */
   coreCommandWords: ReadonlySet<string>;
+  /** The wrapper command names, whose arguments no `commandEffects` declaration describes. */
+  wrapperCommandWords: ReadonlySet<string>;
 }
 
 /**
@@ -155,14 +158,11 @@ export class ConfigStore
     this.config = runtimeConfig;
     this.declared = mergeResult.declaredCommandEffects;
 
-    const shadowed = detectShadowedCommandEffects(
-      this.declared,
-      this.deps.coreCommandWords,
-    );
-    this.configIssues =
-      shadowed === undefined
-        ? mergeResult.issues
-        : [...mergeResult.issues, shadowed];
+    const ignoredDeclarations = [
+      detectShadowedCommandEffects(this.declared, this.deps.coreCommandWords),
+      detectWrapperCommandEffects(this.declared, this.deps.wrapperCommandWords),
+    ].filter((issue) => issue !== undefined);
+    this.configIssues = [...mergeResult.issues, ...ignoredDeclarations];
 
     const warning =
       mergeResult.issues.length > 0 ? mergeResult.issues.join("\n") : undefined;

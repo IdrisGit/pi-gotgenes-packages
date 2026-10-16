@@ -2,6 +2,7 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { getAgentDir, getPackageDir } from "@earendil-works/pi-coding-agent";
 import { PURE_READER_CORE } from "#src/access-intent/bash/command-effects";
 import { warmBashParser } from "#src/access-intent/bash/parser";
+import { WRAPPER_COMMAND_NAMES } from "#src/access-intent/bash/wrapper-analysis";
 import { AskDialogQueue } from "#src/authority/ask-dialog-queue";
 import { AuthorizerChainAudit } from "#src/authority/authorizer-chain-audit";
 import {
@@ -129,6 +130,7 @@ export default function piPermissionSystemExtension(pi: ExtensionAPI): void {
     policyPaths: permissionManager,
     logger,
     coreCommandWords: PURE_READER_CORE,
+    wrapperCommandWords: WRAPPER_COMMAND_NAMES,
   });
 
   const prompter = new PermissionPrompter({ logger });

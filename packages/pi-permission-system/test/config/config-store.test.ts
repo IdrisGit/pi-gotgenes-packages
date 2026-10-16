@@ -115,6 +115,7 @@ function makeStore(overrides: Partial<ConfigStoreDeps> = {}): {
     agentDir: "/test/agent",
     policyPaths: makePolicyPathProvider(),
     coreCommandWords: new Set(["sed"]),
+    wrapperCommandWords: new Set(["xargs"]),
     logger,
     ...overrides,
   };
@@ -192,7 +193,11 @@ describe("ConfigStore", () => {
       mockLoadAndMergeConfigs.mockReturnValue({
         declaredCommandEffects: foldDeclaredCommandEffects(
           NO_DECLARED_COMMAND_EFFECTS,
-          { sed: { effects: "read" }, git: { effects: "read" } },
+          {
+            sed: { effects: "read" },
+            xargs: { effects: "read" },
+            git: { effects: "read" },
+          },
           "global",
         ),
         merged: { ...DEFAULT_EXTENSION_CONFIG },
@@ -202,6 +207,7 @@ describe("ConfigStore", () => {
       expect(store.getConfigIssues()).toEqual([
         "first issue",
         "commandEffects declares 'sed', a pure-reader core command. The core decides its effects, so the declaration is ignored; remove it.",
+        "commandEffects declares 'xargs', a wrapper. A declaration describes a command's own arguments, never the command a wrapper runs, so it is ignored; remove it.",
       ]);
     });
   });
