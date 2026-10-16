@@ -37,6 +37,15 @@ export const UNPROVEN_EFFECT: TokenEffect = {
 };
 
 /**
+ * A claim an argument withdrew: a guarded word's read, or a declaration, whose
+ * guard matched. It is ADR 0013 §7's blame line, never a substitute effect.
+ */
+export const RETRACTED_EFFECT: TokenEffect = {
+  effect: "unproven",
+  source: "retracted",
+};
+
+/**
  * Combine two attributions of the same resolved path.
  *
  * Agreement keeps the effect, and prefers whichever source has something to
