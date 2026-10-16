@@ -353,6 +353,12 @@ export class Subagent {
 		this.currentRun = run;
 		this.markRunning(Date.now());
 		this.execution.observer?.onStarted?.(this);
+		// Cancelled before it started: end here, before the workspace and the child
+		// session cost anything.
+		if (run.aborted) {
+			this.endBeforeStart();
+			return;
+		}
 
 		// Guard the await so the no-provider path stays synchronous, preserving
 		// the original run() timing: the factory is called in the same turn as
@@ -530,6 +536,9 @@ export class Subagent {
 		this.resetForResume(Date.now());
 		const run = new SubagentRun(signal, () => this.abort());
 		this.currentRun = run;
+		// Cancelled before it started: the turn loop takes no turn on a fired lever,
+		// so the resume ends like one aborted mid-run.
+		if (run.aborted) this.abort();
 		this.execution.observer?.onResumeStarted?.(this);
 		run.attachObserver(subscribeSubagentObserver(subagentSession, this.state, {
 			onCompact: (info) => this.execution.observer?.onCompacted?.(this, info),
@@ -741,6 +750,17 @@ export class Subagent {
 		this.subagentSession = undefined;
 		this._sessionReleased = true;
 		await disposeQuietly(session, "child session release");
+	}
+
+	/**
+	 * End a run whose caller cancelled it before it started: stopped, with no
+	 * workspace prepared and no session created, then notify like every other
+	 * terminal transition.
+	 */
+	private endBeforeStart(): void {
+		this.abort();
+		this.currentRun?.release();
+		this.execution.observer?.onRunFinished?.(this);
 	}
 
 	/** Fail a run: mark error, release listeners, best-effort workspace dispose, notify observer. */

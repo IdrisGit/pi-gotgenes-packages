@@ -1809,6 +1809,66 @@ describe("Subagent.resume() — cancellation", () => {
 	});
 });
 
+describe("Subagent — a signal that already fired", () => {
+	function firedSignal(): AbortSignal {
+		const controller = new AbortController();
+		controller.abort();
+		return controller.signal;
+	}
+
+	describe("run()", () => {
+		it("stops before creating a session, reading stopped", async () => {
+			const { factory, stub } = createFactory();
+			const onStarted = vi.fn();
+			const onRunFinished = vi.fn();
+			const agent = createRunnableAgent({
+				createSubagentSession: factory,
+				signal: firedSignal(),
+				observer: { onStarted, onRunFinished },
+			});
+
+			await agent.run();
+
+			expect(factory).not.toHaveBeenCalled();
+			expect(stub.runTurnLoop).not.toHaveBeenCalled();
+			expect(agent.status).toBe("stopped");
+			expect(agent.result).toBeUndefined();
+			expect(agent.resumeRefusal).toBe("no-session");
+			expect(onStarted).toHaveBeenCalledExactlyOnceWith(agent);
+			expect(onRunFinished).toHaveBeenCalledExactlyOnceWith(agent);
+		});
+
+		it("stops before preparing a workspace", async () => {
+			const provider = makeWorkspaceProvider(makeWorkspace("/ws/dir"));
+			const agent = createRunnableAgent({ signal: firedSignal(), workspaceProvider: provider });
+
+			await agent.run();
+
+			expect(provider.prepare).not.toHaveBeenCalled();
+			expect(agent.status).toBe("stopped");
+		});
+	});
+
+	describe("resume()", () => {
+		it("hands the turn loop a fired lever and reads stopped", async () => {
+			const onResumeFinished = vi.fn();
+			const { agent, stub } = createResumableAgent({ observer: { onResumeFinished } });
+			// A real loop handed a fired signal returns at once without a turn.
+			let abortedAtEntry: boolean | undefined;
+			stub.resumeTurnLoop.mockImplementation((_prompt: string, { signal }: { signal?: AbortSignal }) => {
+				abortedAtEntry = signal?.aborted;
+				return Promise.resolve(turnLoopResult({ responseText: "" }));
+			});
+
+			await agent.resume("continue", firedSignal());
+
+			expect(abortedAtEntry).toBe(true);
+			expect(agent.status).toBe("stopped");
+			expect(onResumeFinished).toHaveBeenCalledExactlyOnceWith(agent);
+		});
+	});
+});
+
 describe("Subagent.resume() — observer lifecycle", () => {
 	it("accumulates usage and compactions from session events during resume", async () => {
 		const session = createMockSession();

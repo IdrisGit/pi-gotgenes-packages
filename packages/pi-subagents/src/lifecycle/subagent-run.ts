@@ -13,9 +13,20 @@ export class SubagentRun {
 	private detachCallerSignal?: () => void;
 	private unsubscribeObserver?: () => void;
 
-	/** Wire the caller's signal, when there is one, so firing it calls onCallerAbort. */
+	/**
+	 * Wire the caller's signal, when there is one, so firing it calls onCallerAbort.
+	 *
+	 * A signal that has already fired never fires again, so a listener on it would
+	 * be dead on arrival: the run is born aborted instead. onCallerAbort is not
+	 * called for it — the run is not yet anyone's current run, so the owner
+	 * reads `aborted` once it holds the run.
+	 */
 	constructor(callerSignal: AbortSignal | undefined, onCallerAbort: () => void) {
 		if (!callerSignal) return;
+		if (callerSignal.aborted) {
+			this.controller.abort();
+			return;
+		}
 		const listener = () => onCallerAbort();
 		callerSignal.addEventListener("abort", listener, { once: true });
 		this.detachCallerSignal = () => callerSignal.removeEventListener("abort", listener);

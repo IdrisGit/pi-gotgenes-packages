@@ -34,6 +34,23 @@ describe("SubagentRun", () => {
 			expect(onCallerAbort).toHaveBeenCalledOnce();
 		});
 
+		it("is born aborted when the signal has already fired", () => {
+			const controller = new AbortController();
+			controller.abort();
+			const run = new SubagentRun(controller.signal, vi.fn());
+			expect(run.aborted).toBe(true);
+			expect(run.signal.aborted).toBe(true);
+		});
+
+		it("does not call onCallerAbort for a signal that had already fired", () => {
+			const controller = new AbortController();
+			controller.abort();
+			const onCallerAbort = vi.fn();
+			const run = new SubagentRun(controller.signal, onCallerAbort);
+			run.release();
+			expect(onCallerAbort).not.toHaveBeenCalled();
+		});
+
 		it("accepts no signal", () => {
 			expect(() => new SubagentRun(undefined, vi.fn())).not.toThrow();
 		});

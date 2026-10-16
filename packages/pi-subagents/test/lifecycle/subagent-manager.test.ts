@@ -343,6 +343,23 @@ describe("SubagentManager", () => {
         expect(record.status).toBe("completed");
         expect(onCreated).not.toHaveBeenCalled();
       });
+    });
+
+    describe("a caller signal that already fired", () => {
+      it("resolves with a stopped record whose session was never created", async () => {
+        const { factory } = createSessionFactory();
+        ({ manager } = createManager({ createSubagentSession: factory }));
+        const controller = new AbortController();
+        controller.abort();
+
+        const record = await manager.spawnAndWait(STUB_SNAPSHOT, "general-purpose", "test", {
+          description: "d",
+          signal: controller.signal,
+        });
+
+        expect(record.status).toBe("stopped");
+        expect(factory).not.toHaveBeenCalled();
+      });
 
       it("claims the outcome before the run can terminate", async () => {
         // Hold session creation open so the claim is observable while the run is
@@ -1582,6 +1599,26 @@ describe("SubagentManager", () => {
         // runs under the one lever abort(id) can also pull.
         expect(stub.resumeTurnLoop).toHaveBeenCalledWith("continue", expect.objectContaining({ signal: expect.any(AbortSignal) }));
         expect(loopSignal).not.toBe(signal);
+      });
+
+      it("stops a resume whose caller signal already fired", async () => {
+        const { factory, stub } = createSessionFactory();
+        let abortedAtEntry: boolean | undefined;
+        stub.resumeTurnLoop.mockImplementation((_prompt: string, opts: { signal?: AbortSignal }) => {
+          abortedAtEntry = opts.signal?.aborted;
+          return Promise.resolve(turnLoopResult({ responseText: "" }));
+        });
+        ({ manager } = createManager({ createSubagentSession: factory }));
+        const id = spawnBg(manager);
+        await manager.getRecord(id)!.promise;
+        const controller = new AbortController();
+        controller.abort();
+
+        const outcome = await manager.resume(id, "continue", { signal: controller.signal });
+
+        expect(outcome.kind).toBe("resumed");
+        expect(abortedAtEntry).toBe(true);
+        expect(manager.getRecord(id)!.status).toBe("stopped");
       });
 
       it("stops an in-flight resume when the caller aborts it by id", async () => {
