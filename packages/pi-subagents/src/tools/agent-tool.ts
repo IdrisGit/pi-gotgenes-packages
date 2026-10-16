@@ -149,10 +149,12 @@ export class AgentTool {
 			return textResult(resumeRefusalMessage(start.reason, id));
 		}
 		const record = start.record;
-		// No finally: the record's promise always resolves, whatever the run ends in.
 		const stopStream = startProgressStream({ detailBase, onUpdate, getRecord: () => record });
-		await record.promise;
-		stopStream();
+		try {
+			await record.promise;
+		} finally {
+			stopStream();
+		}
 		// Resume-return delivery edge: the resumed outcome is returned directly.
 		record.markConsumed();
 		return textResult(
