@@ -440,6 +440,7 @@ describe("processInbox — recorded-authority resolution", () => {
           commandContext: null,
           matchedSpelling: null,
           executedUnit: null,
+          decidingPath: null,
         },
         evidence: [],
         annotations: [],
@@ -711,6 +712,7 @@ describe("processInbox — the child's payload on the escalated ask", () => {
         commandContext: null,
         matchedSpelling: null,
         executedUnit: null,
+        decidingPath: null,
       },
       evidence: [
         { label: "full command", text: "git push --force", detail: null },
@@ -775,6 +777,7 @@ describe("processInbox — the child's payload on the escalated ask", () => {
         commandContext: null,
         matchedSpelling: null,
         executedUnit: null,
+        decidingPath: null,
       },
       evidence: [],
       annotations: [],

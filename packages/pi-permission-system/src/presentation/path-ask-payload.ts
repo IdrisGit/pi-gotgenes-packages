@@ -84,6 +84,7 @@ export function buildBashExternalDirectoryAskPayload(
       commandContext: null,
       matchedSpelling: null,
       executedUnit: null,
+      decidingPath: null,
     },
     evidence: [
       workingDirectoryEvidence(facts.cwd),
@@ -116,6 +117,7 @@ function pathPayload(
       commandContext: null,
       matchedSpelling: null,
       executedUnit: null,
+      decidingPath: null,
     },
     evidence,
     annotations: [],
