@@ -261,8 +261,12 @@ export class SubagentManager {
   /** Compose a per-agent lifecycle observer from manager and spawn-config concerns. */
   private buildObserver(options: AgentSpawnConfig): SubagentLifecycleObserver {
     return {
-      onStarted: (agent) => {
-        this.observer?.onSubagentStarted(agent);
+      onRunStarted: (agent, kind) => {
+        if (kind === "initial") {
+          this.observer?.onSubagentStarted(agent);
+          return;
+        }
+        try { this.observer?.onSubagentResuming(agent); } catch (err) { debugLog("onSubagentResuming observer", err); }
       },
       onSessionCreated: options.observer?.onSessionCreated
         ? (agent) => options.observer!.onSessionCreated!(agent)
@@ -272,13 +276,11 @@ export class SubagentManager {
       // carrier claim; suppressing the observer here would also suppress the
       // lifecycle event and the session-history record, which are facts about
       // the run rather than announcements.
-      onRunFinished: (agent) => {
-        try { this.observer?.onSubagentCompleted(agent); } catch (err) { debugLog("onSubagentCompleted observer", err); }
-      },
-      onResumeStarted: (agent) => {
-        try { this.observer?.onSubagentResuming(agent); } catch (err) { debugLog("onSubagentResuming observer", err); }
-      },
-      onResumeFinished: (agent) => {
+      onRunFinished: (agent, kind) => {
+        if (kind === "initial") {
+          try { this.observer?.onSubagentCompleted(agent); } catch (err) { debugLog("onSubagentCompleted observer", err); }
+          return;
+        }
         try { this.observer?.onSubagentResumed(agent); } catch (err) { debugLog("onSubagentResumed observer", err); }
       },
       onUpdateSent: (agent, message) => {

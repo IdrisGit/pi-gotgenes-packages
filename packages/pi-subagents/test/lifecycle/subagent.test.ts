@@ -445,7 +445,7 @@ describe("Subagent — a run that settles", () => {
 	it("fires observer.onRunFinished on completion", async () => {
 		const onRunFinished = vi.fn();
 		const record = await runToTerminal({}, { onRunFinished });
-		expect(onRunFinished).toHaveBeenCalledExactlyOnceWith(record);
+		expect(onRunFinished).toHaveBeenCalledExactlyOnceWith(record, "initial");
 	});
 });
 
@@ -459,7 +459,7 @@ describe("Subagent — a run that fails", () => {
 	it("fires observer.onRunFinished on failure", async () => {
 		const onRunFinished = vi.fn();
 		const record = await runToTerminal({ error: new Error("boom") }, { onRunFinished });
-		expect(onRunFinished).toHaveBeenCalledExactlyOnceWith(record);
+		expect(onRunFinished).toHaveBeenCalledExactlyOnceWith(record, "initial");
 	});
 });
 
@@ -482,8 +482,7 @@ describe("Subagent — stopQueued", () => {
 		const onRunFinished = vi.fn();
 		const record = createQueuedAgent({ onRunFinished });
 		record.stopQueued();
-		expect(onRunFinished).toHaveBeenCalledOnce();
-		expect(onRunFinished).toHaveBeenCalledWith(record);
+		expect(onRunFinished).toHaveBeenCalledExactlyOnceWith(record, "initial");
 	});
 
 	it("leaves stoppedWhileQueued false for a running agent aborted mid-run", () => {
@@ -717,10 +716,10 @@ describe("Subagent.run() — happy path", () => {
 		expect(agent.result).toBe("done");
 	});
 
-	it("fires observer callbacks in order: onStarted → onSessionCreated → onRunFinished", async () => {
+	it("fires observer callbacks in order: onRunStarted → onSessionCreated → onRunFinished", async () => {
 		const callOrder: string[] = [];
 		const observer: SubagentLifecycleObserver = {
-			onStarted: () => callOrder.push("started"),
+			onRunStarted: () => callOrder.push("started"),
 			onSessionCreated: () => callOrder.push("sessionCreated"),
 			onRunFinished: () => callOrder.push("runFinished"),
 		};
@@ -811,7 +810,7 @@ describe("Subagent.run() — workspace provider", () => {
 		await agent.run();
 		expect(agent.status).toBe("error");
 		expect(agent.error).toBe("prepare failed");
-		expect(onRunFinished).toHaveBeenCalledOnce();
+		expect(onRunFinished).toHaveBeenCalledExactlyOnceWith(agent, "initial");
 	});
 
 	it("disposes with status error when the turn loop throws", async () => {
@@ -1622,7 +1621,7 @@ describe("Subagent.waitUntilSettled()", () => {
 			execution: makeStubExecution({
 				createSubagentSession: async () => toSubagentSession(stub),
 				// Resumes the moment the run settles, before the waiter continues.
-				observer: { onRunFinished: (a) => { void a.resume("continue"); } },
+				observer: { onRunFinished: (a, kind) => { if (kind === "initial") void a.resume("continue"); } },
 			}),
 		});
 		agent.start();
@@ -1765,13 +1764,13 @@ describe("Subagent.resume() — turn budget", () => {
 	});
 
 	it("ends aborted, and notifies the observer, when the resume exhausts its budget", async () => {
-		const onResumeFinished = vi.fn();
-		const { agent, stub } = createResumableAgent({ observer: { onResumeFinished } });
+		const onRunFinished = vi.fn();
+		const { agent, stub } = createResumableAgent({ observer: { onRunFinished } });
 		stub.runTurnLoop.mockResolvedValue(turnLoopResult({ responseText: "partial", turnBudget: EXHAUSTED }));
 		await agent.resume("continue");
 		expect(agent.status).toBe("aborted");
 		expect(agent.result).toBe("partial");
-		expect(onResumeFinished).toHaveBeenCalledOnce();
+		expect(onRunFinished).toHaveBeenCalledExactlyOnceWith(agent, "resume");
 	});
 });
 
@@ -1833,12 +1832,12 @@ describe("Subagent — a signal that already fired", () => {
 	describe("run()", () => {
 		it("stops before creating a session, reading stopped", async () => {
 			const { factory, stub } = createFactory();
-			const onStarted = vi.fn();
+			const onRunStarted = vi.fn();
 			const onRunFinished = vi.fn();
 			const agent = createRunnableAgent({
 				createSubagentSession: factory,
 				signal: firedSignal(),
-				observer: { onStarted, onRunFinished },
+				observer: { onRunStarted, onRunFinished },
 			});
 
 			await agent.run();
@@ -1848,8 +1847,8 @@ describe("Subagent — a signal that already fired", () => {
 			expect(agent.status).toBe("stopped");
 			expect(agent.result).toBeUndefined();
 			expect(agent.resumeRefusal).toBe("no-session");
-			expect(onStarted).toHaveBeenCalledExactlyOnceWith(agent);
-			expect(onRunFinished).toHaveBeenCalledExactlyOnceWith(agent);
+			expect(onRunStarted).toHaveBeenCalledExactlyOnceWith(agent, "initial");
+			expect(onRunFinished).toHaveBeenCalledExactlyOnceWith(agent, "initial");
 		});
 
 		it("stops before creating a session when the signal fires as the run starts", async () => {
@@ -1858,7 +1857,7 @@ describe("Subagent — a signal that already fired", () => {
 			const agent = createRunnableAgent({
 				createSubagentSession: factory,
 				signal: controller.signal,
-				observer: { onStarted: () => { controller.abort(); } },
+				observer: { onRunStarted: () => { controller.abort(); } },
 			});
 
 			await agent.run();
@@ -1880,8 +1879,8 @@ describe("Subagent — a signal that already fired", () => {
 
 	describe("resume()", () => {
 		it("hands the turn loop a fired lever and reads stopped", async () => {
-			const onResumeFinished = vi.fn();
-			const { agent, stub } = createResumableAgent({ observer: { onResumeFinished } });
+			const onRunFinished = vi.fn();
+			const { agent, stub } = createResumableAgent({ observer: { onRunFinished } });
 			// A real loop handed a fired signal returns at once without a turn.
 			let abortedAtEntry: boolean | undefined;
 			stub.runTurnLoop.mockImplementation((_prompt: string, { signal }: { signal?: AbortSignal }) => {
@@ -1893,7 +1892,7 @@ describe("Subagent — a signal that already fired", () => {
 
 			expect(abortedAtEntry).toBe(true);
 			expect(agent.status).toBe("stopped");
-			expect(onResumeFinished).toHaveBeenCalledExactlyOnceWith(agent);
+			expect(onRunFinished).toHaveBeenCalledExactlyOnceWith(agent, "resume");
 		});
 	});
 });
@@ -1937,11 +1936,11 @@ describe("Subagent.resume() — observer lifecycle", () => {
 		expect(agent.toolUses).toBe(0);
 	});
 
-	it("fires observer.onResumeStarted once the resumed run is under way", async () => {
+	it("fires observer.onRunStarted once the resumed run is under way", async () => {
 		const seen: Array<{ status: string; completedAt: number | undefined }> = [];
-		const onResumeStarted = (agent: Subagent) =>
+		const onRunStarted = (agent: Subagent) =>
 			seen.push({ status: agent.status, completedAt: agent.completedAt });
-		const { agent } = createResumableAgent({ observer: { onResumeStarted } });
+		const { agent } = createResumableAgent({ observer: { onRunStarted } });
 
 		await agent.resume("continue");
 
@@ -1951,32 +1950,50 @@ describe("Subagent.resume() — observer lifecycle", () => {
 		expect(agent.status).toBe("completed");
 	});
 
-	it("fires observer.onResumeStarted even when the resumed run fails", async () => {
-		const onResumeStarted = vi.fn();
-		const stub = createSubagentSessionStub();
-		stub.runTurnLoop.mockRejectedValue(new Error("resume exploded"));
-		const { agent } = createResumableAgent({ observer: { onResumeStarted }, stub });
+	// The resume door claims the outcome before calling resume(), and a waiter
+	// reads the record the moment it returns: both rely on the resume being
+	// under way by then, not on a later turn.
+	it("is under way by the time resume() returns", async () => {
+		const onRunStarted = vi.fn();
+		const { agent, stub } = createResumableAgent({ observer: { onRunStarted } });
+		const gate = Promise.withResolvers<TurnLoopResult>();
+		stub.runTurnLoop.mockReturnValue(gate.promise);
 
-		await agent.resume("continue");
+		const resumed = agent.resume("continue");
 
-		expect(onResumeStarted).toHaveBeenCalledExactlyOnceWith(agent);
+		expect(agent.status).toBe("running");
+		expect(onRunStarted).toHaveBeenCalledExactlyOnceWith(agent, "resume");
+		expect(stub.runTurnLoop).toHaveBeenCalledOnce();
+		gate.resolve(turnLoopResult({ responseText: "resumed" }));
+		await resumed;
 	});
 
-	it("fires observer.onResumeFinished once the resume completes", async () => {
-		const onResumeFinished = vi.fn();
-		const { agent } = createResumableAgent({ observer: { onResumeFinished } });
+	it("fires observer.onRunStarted even when the resumed run fails", async () => {
+		const onRunStarted = vi.fn();
+		const stub = createSubagentSessionStub();
+		stub.runTurnLoop.mockRejectedValue(new Error("resume exploded"));
+		const { agent } = createResumableAgent({ observer: { onRunStarted }, stub });
+
 		await agent.resume("continue");
-		expect(onResumeFinished).toHaveBeenCalledExactlyOnceWith(agent);
+
+		expect(onRunStarted).toHaveBeenCalledExactlyOnceWith(agent, "resume");
+	});
+
+	it("fires observer.onRunFinished once the resume completes", async () => {
+		const onRunFinished = vi.fn();
+		const { agent } = createResumableAgent({ observer: { onRunFinished } });
+		await agent.resume("continue");
+		expect(onRunFinished).toHaveBeenCalledExactlyOnceWith(agent, "resume");
 		expect(agent.status).toBe("completed");
 	});
 
-	it("fires observer.onResumeFinished when the resume errors", async () => {
-		const onResumeFinished = vi.fn();
+	it("fires observer.onRunFinished when the resume errors", async () => {
+		const onRunFinished = vi.fn();
 		const stub = createSubagentSessionStub();
 		stub.runTurnLoop.mockRejectedValue(new Error("resume exploded"));
-		const { agent } = createResumableAgent({ observer: { onResumeFinished }, stub });
+		const { agent } = createResumableAgent({ observer: { onRunFinished }, stub });
 		await agent.resume("continue");
-		expect(onResumeFinished).toHaveBeenCalledExactlyOnceWith(agent);
+		expect(onRunFinished).toHaveBeenCalledExactlyOnceWith(agent, "resume");
 		expect(agent.status).toBe("error");
 	});
 });

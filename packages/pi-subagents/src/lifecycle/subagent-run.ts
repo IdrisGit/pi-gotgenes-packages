@@ -7,6 +7,9 @@
  * outlives it on the per-agent record.
  */
 
+/** Which run of a subagent this is: the one that created its session, or a resume of it. */
+export type RunKind = "initial" | "resume";
+
 /** One run of a subagent (the initial run or a resume) and the handles it holds until it ends. */
 export class SubagentRun {
 	private readonly controller = new AbortController();
@@ -21,7 +24,11 @@ export class SubagentRun {
 	 * called for it — the run is not yet anyone's current run, so the owner
 	 * reads `aborted` once it holds the run.
 	 */
-	constructor(callerSignal: AbortSignal | undefined, onCallerAbort: () => void) {
+	constructor(
+		readonly kind: RunKind,
+		callerSignal: AbortSignal | undefined,
+		onCallerAbort: () => void,
+	) {
 		if (!callerSignal) return;
 		if (callerSignal.aborted) {
 			this.controller.abort();

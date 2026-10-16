@@ -132,7 +132,8 @@ describe("GetResultTool — carrier claim", () => {
 				// A consumer that resumes the moment the run settles, before the
 				// waiter's continuation runs, as a subagents:completed handler can.
 				observer: {
-					onRunFinished: (agent) => {
+					onRunFinished: (agent, kind) => {
+						if (kind !== "initial") return;
 						agent.claim();
 						void agent.resume("continue");
 					},
@@ -183,7 +184,8 @@ describe("GetResultTool — a wait a resume superseded", () => {
 					return toSubagentSession(sessionStub);
 				},
 				observer: {
-					onRunFinished: (agent) => {
+					onRunFinished: (agent, kind) => {
+						if (kind !== "initial") return;
 						agent.claim();
 						void agent.resume("The project one.");
 					},
