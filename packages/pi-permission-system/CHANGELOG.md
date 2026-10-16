@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [40.2.2](https://github.com/gotgenes/pi-packages/compare/pi-permission-system-v40.2.1...pi-permission-system-v40.2.2) (2026-10-16)
+
+
+### Bug Fixes
+
+* **pi-permission-system:** a bare env that runs no command resolves by its own rule ([8a8ab44](https://github.com/gotgenes/pi-packages/commit/8a8ab442584a58c85652c0dacf712edbbae960a7)), closes [#1064](https://github.com/gotgenes/pi-packages/issues/1064)
+* **pi-permission-system:** env --unset with a separate value keeps the indirection floor ([2c39f33](https://github.com/gotgenes/pi-packages/commit/2c39f339077741d76465179985f35422387fe711)), closes [#1064](https://github.com/gotgenes/pi-packages/issues/1064)
+
+### Documentation
+
+* **pi-permission-system:** measure the no-command exemption ([90fc479](https://github.com/gotgenes/pi-packages/commit/90fc47938230f84fcb8540db4161a918a78b1670)), closes [#1064](https://github.com/gotgenes/pi-packages/issues/1064)
+* **pi-permission-system:** document the no-command floor exemption ([5b70c81](https://github.com/gotgenes/pi-packages/commit/5b70c81bcde04dacf030839176ba8c5ec4e04be9)), closes [#1064](https://github.com/gotgenes/pi-packages/issues/1064)
+* **pi-permission-system:** record that BSD env reads --unset as a cluster ([925d877](https://github.com/gotgenes/pi-packages/commit/925d8777eadc5ee94b847c9796cf900583c6fe46)), closes [#1064](https://github.com/gotgenes/pi-packages/issues/1064)
+
 ## [40.2.1](https://github.com/gotgenes/pi-packages/compare/pi-permission-system-v40.2.0...pi-permission-system-v40.2.1) (2026-10-14)
 
 
