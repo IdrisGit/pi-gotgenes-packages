@@ -16,7 +16,7 @@ import { subscribeSubagentObserver } from "#src/lifecycle/record-observer";
 import { SubagentRun } from "#src/lifecycle/subagent-run";
 import type { SubagentSession, TurnLoopResult } from "#src/lifecycle/subagent-session";
 import { type CarrierClaim, type SettledOutcome, SubagentState, type SubagentStatus } from "#src/lifecycle/subagent-state";
-import { type TurnBudget, wrappedUpAtTurnLimit } from "#src/lifecycle/turn-limits";
+import type { TurnBudget } from "#src/lifecycle/turn-limits";
 import type { LifetimeUsage } from "#src/lifecycle/usage";
 import type { WorkspaceProvider } from "#src/lifecycle/workspace";
 import { WorkspaceBracket } from "#src/lifecycle/workspace-bracket";
@@ -702,14 +702,12 @@ export class Subagent {
 		const exhausted = result.turnBudget.phase === "exhausted";
 		const finalStatus: SubagentStatus = exhausted ? "aborted" : "completed";
 		// A completed child that declared a question is inviting a resume, so its
-		// workspace stays live for the resume to re-enter. Every other outcome ends
-		// the run for good and tears it down here, including a run that wrapped up
-		// at its turn limit. The question was recorded by ask_parent during the
-		// run, so it is already on the record here.
-		const holdForResume =
-			finalStatus === "completed" &&
-			this.pendingQuestion !== undefined &&
-			!wrappedUpAtTurnLimit({ status: finalStatus, turnBudget: result.turnBudget });
+		// workspace stays live for the resume to re-enter, including a run that
+		// wrapped up at its turn limit: the resume gets a fresh budget to act on the
+		// answer. Every other outcome ends the run for good and tears it down here.
+		// The question was recorded by ask_parent during the run, so it is already
+		// on the record here.
+		const holdForResume = finalStatus === "completed" && this.pendingQuestion !== undefined;
 		const finalResult = holdForResume
 			? result.responseText
 			: result.responseText +

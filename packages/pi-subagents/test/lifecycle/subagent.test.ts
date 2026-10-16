@@ -967,15 +967,34 @@ describe("Subagent — workspace hold for a declared question", () => {
 		expect(agent.result).toBe(ADDENDUM);
 	});
 
-	it("disposes a run that wrapped up at its turn limit and declared a question", async () => {
+	// A child warned it is running out of turns can still finish with a question,
+	// and a resume gets a fresh budget to act on the answer.
+	it("holds the workspace when a run wrapped up at its turn limit and declared a question", async () => {
 		const { agent, workspace } = await runWithWorkspace({
 			responseText: "Partway.",
 			question: "Which one?",
 			turnBudget: WARNED,
 		});
 		expect(agent.status).toBe("completed");
-		expect(workspace.dispose).toHaveBeenCalledWith({ status: "completed", description: "run test" });
-		expect(agent.result).toBe(`Partway.${ADDENDUM}`);
+		expect(workspace.dispose).not.toHaveBeenCalled();
+		expect(agent.workspaceDisposed).toBe(false);
+		expect(agent.resumeRefusal).toBeUndefined();
+		expect(agent.result).toBe("Partway.");
+	});
+
+	it("holds the workspace when a resumed run wrapped up at its turn limit and declared another question", async () => {
+		const { agent, workspace, stub, ask } = await heldWorkspaceAgent();
+		stub.resumeTurnLoop.mockImplementation(() => {
+			ask("And the fallback?");
+			return Promise.resolve(turnLoopResult({ responseText: "Partway.", turnBudget: WARNED }));
+		});
+
+		await agent.resume("The project one.");
+
+		expect(agent.status).toBe("completed");
+		expect(workspace.dispose).not.toHaveBeenCalled();
+		expect(agent.resumeRefusal).toBeUndefined();
+		expect(agent.result).toBe("Partway.");
 	});
 });
 
