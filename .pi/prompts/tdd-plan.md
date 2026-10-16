@@ -75,8 +75,6 @@ The plan's Tidy-First preparatory steps (`refactor:`/`test:` steps naming the fr
 Execute them in place, each as its own commit leaving the tree green, and run no separate assessment — `/plan-issue` already dispatched the assessor.
 If the tree has moved since the plan was written and a preparatory step no longer fits what it describes, stop and report rather than improvising a substitute.
 
-Never batch an `Edit`/`Write` with another call that reads, runs, copies, or diffs the same file — calls in one batch run concurrently with the edit and its `pi-autoformat` pass.
-
 For **each** step in the plan's "TDD Order", in order:
 
 1. **Red.**
