@@ -683,6 +683,29 @@ describe("processInbox — child-fixed access facts on the escalated ask", () =>
     });
   });
 
+  test("carries the child's nothing-on-disk license onto the escalated ask details", async () => {
+    const details = await escalateForwardedAsk({
+      id: "req-license-facts",
+      source: "tool_call",
+      surface: "bash",
+      value: "officecli set data.xlsx /Sheet1/B1",
+      accessIntent: makeForwardedAccessIntent({
+        surface: "external_directory",
+        matchValues: ["/Sheet1/B1"],
+        boundaryValue: "/Sheet1/B1",
+        delegationLicense: "nothing-on-disk",
+      }),
+    });
+
+    // Projected from the child's fact, never re-probed on this node (ADR 0008).
+    expect(details.accessIntent).toStrictEqual({
+      surface: "external_directory",
+      matchValues: ["/Sheet1/B1"],
+      boundaryValue: "/Sheet1/B1",
+      delegationLicense: "nothing-on-disk",
+    });
+  });
+
   test("omits accessIntent entirely for a version-skew request that carried none", async () => {
     const details = await escalateForwardedAsk({
       id: "req-skew-facts",
