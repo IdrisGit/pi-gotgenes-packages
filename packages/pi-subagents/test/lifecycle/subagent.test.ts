@@ -8,6 +8,7 @@ import type { TurnBudget } from "#src/lifecycle/turn-limits";
 import type { WorkspacePrepareContext, WorkspaceProvider } from "#src/lifecycle/workspace";
 import type { RunConfig } from "#src/runtime";
 import type { CompactionInfo, SubagentType } from "#src/types";
+import { gatedScheduler } from "#test/helpers/gated-scheduler";
 import { makeModel } from "#test/helpers/make-model";
 import { createTestSubagent, makeStubExecution } from "#test/helpers/make-subagent";
 import { makeWorkspace, makeWorkspaceProvider } from "#test/helpers/make-workspace";
@@ -1185,11 +1186,8 @@ describe("Subagent", () => {
 	describe("scheduleVia(): eager promise capture", () => {
 		it("exposes the scheduler promise before the run starts (queued-awaitable)", async () => {
 			const agent = makeSubagent({ status: "queued" });
-			const { promise: gate, resolve: openSlot } = Promise.withResolvers<void>(); // eslint-disable-line @typescript-eslint/no-invalid-void-type -- Promise.withResolvers<void> is valid; rule does not allow void in generic fn call type args
-			agent.scheduleVia(async (thunk) => {
-				await gate;
-				await thunk();
-			});
+			const { schedule, openSlot } = gatedScheduler();
+			agent.scheduleVia(schedule);
 			// Promise is captured at schedule time — before the slot opens.
 			expect(agent.promise).toBeInstanceOf(Promise);
 			expect(agent.status).toBe("queued");
@@ -1230,11 +1228,8 @@ describe("Subagent", () => {
 
 		it("spans the queue slot and the run that follows it", async () => {
 			const agent = makeSubagent({ status: "queued" });
-			const { promise: gate, resolve: openSlot } = Promise.withResolvers<void>(); // eslint-disable-line @typescript-eslint/no-invalid-void-type -- Promise.withResolvers<void> is valid; rule does not allow void in generic fn call type args
-			agent.scheduleVia(async (thunk) => {
-				await gate;
-				await thunk();
-			});
+			const { schedule, openSlot } = gatedScheduler();
+			agent.scheduleVia(schedule);
 
 			const wait = agent.waitUntilSettled(new AbortController().signal);
 			openSlot();
@@ -1246,11 +1241,8 @@ describe("Subagent", () => {
 
 		it("ends the wait on interrupt without cancelling the agent", async () => {
 			const agent = makeSubagent({ status: "queued" });
-			const { promise: gate, resolve: openSlot } = Promise.withResolvers<void>(); // eslint-disable-line @typescript-eslint/no-invalid-void-type -- Promise.withResolvers<void> is valid; rule does not allow void in generic fn call type args
-			agent.scheduleVia(async (thunk) => {
-				await gate;
-				await thunk();
-			});
+			const { schedule, openSlot } = gatedScheduler();
+			agent.scheduleVia(schedule);
 			const controller = new AbortController();
 
 			const wait = agent.waitUntilSettled(controller.signal);

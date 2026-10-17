@@ -9,6 +9,7 @@ import {
 } from "#src/tools/get-result-tool";
 import type { Subagent } from "#src/types";
 import type { Theme } from "#src/ui/display";
+import { gatedScheduler } from "#test/helpers/gated-scheduler";
 import { makeModel } from "#test/helpers/make-model";
 import { createTestSubagent, makeStubExecution } from "#test/helpers/make-subagent";
 import { createMockSession, createSubagentSessionStub, toSubagentSession } from "#test/helpers/mock-session";
@@ -47,11 +48,8 @@ describe("GetResultTool — carrier claim", () => {
 				createSubagentSession: async () => toSubagentSession(sessionStub),
 			}),
 		});
-		const { promise: slot, resolve: openSlot } = Promise.withResolvers<void>(); // eslint-disable-line @typescript-eslint/no-invalid-void-type -- Promise.withResolvers<void> is valid; rule does not allow void in generic fn call type args
-		record.scheduleVia(async (thunk) => {
-			await slot;
-			await thunk();
-		});
+		const { schedule, openSlot } = gatedScheduler();
+		record.scheduleVia(schedule);
 		const resultPromise = execute(makeManager(new Map([["agent-1", record]])), {
 			agent_id: "agent-1",
 			wait: true,
@@ -417,11 +415,8 @@ describe("GetResultTool", () => {
 			}),
 		});
 		// The limiter admits the agent only after the parent has begun waiting.
-		const { promise: slot, resolve: openSlot } = Promise.withResolvers<void>(); // eslint-disable-line @typescript-eslint/no-invalid-void-type -- Promise.withResolvers<void> is valid; rule does not allow void in generic fn call type args
-		record.scheduleVia(async (thunk) => {
-			await slot;
-			await thunk();
-		});
+		const { schedule, openSlot } = gatedScheduler();
+		record.scheduleVia(schedule);
 		const records = new Map([["agent-1", record]]);
 
 		const resultPromise = execute(makeManager(records), { agent_id: "agent-1", wait: true });
