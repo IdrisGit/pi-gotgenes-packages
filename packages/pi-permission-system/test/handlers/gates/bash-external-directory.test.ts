@@ -266,6 +266,34 @@ describe("describeBashExternalDirectoryGate", () => {
       },
     );
 
+    it.each([
+      ["a relative climb to the root", "cat ../../pi-permission-882-absent/x"],
+      [
+        "a relative path after a cd that fails",
+        "cd /pi-permission-882-absent; cat ../../.ssh/id_rsa",
+      ],
+      [
+        "a `..` segment, which the kernel resolves physically",
+        "cat /pi-permission-882-absent/../pi-permission-882-other/x",
+      ],
+      ["a `.` segment", "cat /pi-permission-882-absent/./x"],
+    ])(
+      "withholds it from a token not spelled as the path it names (%s)",
+      async (_, command) => {
+        expect(await licenseOf(command)).toBeUndefined();
+      },
+    );
+
+    it.each([
+      ["a split absolute path", "cat /pi-permission-882-absent/e\\\ntc/passwd"],
+      ["a split head", "cat /e\\\ntc/passwd"],
+    ])(
+      "withholds it from a command a backslash-newline joins (%s)",
+      async (_, command) => {
+        expect(await licenseOf(command)).toBeUndefined();
+      },
+    );
+
     it("withholds it from a proven write", async () => {
       expect(await licenseOf(`echo x > ${ABSENT_AT_ROOT}/f`)).toBeUndefined();
     });

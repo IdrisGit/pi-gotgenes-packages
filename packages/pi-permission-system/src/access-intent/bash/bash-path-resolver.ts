@@ -88,9 +88,10 @@ export interface BashExternalPath {
    * fact may be read from it: `unknown-base` for a token relative to a working
    * directory the parse could not determine (after a non-literal `cd`), which
    * is resolved against the session cwd for display and matching only, and
-   * `shell-expansion` for a token whose spelling the shell rewrites at run time
-   * (a glob, a brace, a parameter or command substitution, an escape), which
-   * is resolved as typed.
+   * `not-verbatim` for any other token not spelled as the absolute path it
+   * names (a relative spelling, a `.` or `..` segment, or a glob, brace,
+   * parameter or command substitution, or escape the shell rewrites at run
+   * time).
    */
   readonly unlocated?: Unlocated;
 }
@@ -834,7 +835,7 @@ export class BashPathResolver {
 const GLOB_CHARACTERS = /[*?[]/;
 
 /** Why a path is not where the command reaches; see {@link BashExternalPath}. */
-export type Unlocated = "unknown-base" | "shell-expansion";
+export type Unlocated = "unknown-base" | "not-verbatim";
 
 /** The location fact {@link recordExternal} stamps on an entry it records. */
 interface PathLocation {
@@ -850,11 +851,24 @@ interface PathLocation {
  */
 const SHELL_EXPANSION_CHARACTERS = /[*?[{$`\\]/;
 
-/** `shell-expansion` when the token's spelling is not the path that runs. */
+/**
+ * `not-verbatim` unless the token is spelled as the very path it names: an
+ * absolute path with no shell expansion and no `.` or `..` segment. A
+ * relative token depends on a working directory the projection only models (a
+ * `cd` that fails leaves the shell where it was), and a dot segment is
+ * collapsed lexically while the kernel resolves it through any symlinked
+ * ancestor, so neither names a path a filesystem fact may be read from.
+ */
 function locationOfSpelling(token: string): PathLocation {
-  return SHELL_EXPANSION_CHARACTERS.test(token)
-    ? { unlocated: "shell-expansion" }
-    : {};
+  return isVerbatimAbsolute(token) ? {} : { unlocated: "not-verbatim" };
+}
+
+function isVerbatimAbsolute(token: string): boolean {
+  if (!token.startsWith("/")) return false;
+  if (SHELL_EXPANSION_CHARACTERS.test(token)) return false;
+  return token
+    .split("/")
+    .every((segment) => segment !== "." && segment !== "..");
 }
 
 /** The key an argument spelling is filed under: its node's source span. */

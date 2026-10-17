@@ -48,7 +48,7 @@ export class BashProgram {
     private readonly commandUnits: readonly BashCommand[],
     private readonly resolvedExternalAccesses: readonly BashExternalPath[],
     private readonly resolvedRuleCandidates: readonly BashPathRuleCandidate[],
-    private readonly primaryParseWhole: boolean,
+    private readonly spelledVerbatim: boolean,
   ) {}
 
   /**
@@ -125,7 +125,8 @@ export class BashProgram {
           ],
           externalAccesses,
           ruleCandidates,
-          !parseUnresolvedWithin(tree.rootNode),
+          !parseUnresolvedWithin(tree.rootNode) &&
+            !LINE_CONTINUATION.test(command),
         );
       });
     } finally {
@@ -196,15 +197,23 @@ export class BashProgram {
   }
 
   /**
-   * Whether the grammar read the whole command without error recovery.
+   * Whether every token the slices hold is spelled as bash will read it: the
+   * grammar read the whole command without error recovery, and no
+   * backslash-newline continuation joins two lines into one word.
    *
-   * Where it could not, tree-sitter invents the structure around the failure,
-   * so a token can stand truncated (`/@(etc|var)` read as `/@`) and the slices
-   * name paths the command does not reach. The slices stay usable for asking,
-   * which only ever surfaces more; a fact that would *relieve* an ask, such as
-   * the nothing-on-disk delegation license, must not be read from them.
+   * Where either fails, a token can stand truncated (`/@(etc|var)` read as
+   * `/@`, `/e\<newline>tc` as `/e`) and the slices name paths the command does
+   * not reach. They stay usable for asking, which only ever surfaces more; a
+   * fact that would *relieve* an ask, such as the nothing-on-disk delegation
+   * license, must not be read from them.
    */
-  parsedWhole(): boolean {
-    return this.primaryParseWhole;
+  readsVerbatim(): boolean {
+    return this.spelledVerbatim;
   }
 }
+
+/**
+ * A backslash-newline, which bash removes before splitting words. Quoting is
+ * not modelled: the fact this feeds only ever withholds.
+ */
+const LINE_CONTINUATION = /\\\r?\n/;

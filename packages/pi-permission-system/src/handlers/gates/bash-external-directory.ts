@@ -106,10 +106,11 @@ export function describeBashExternalDirectoryGate(
   }));
 
   const surface = worstEntry.surface;
-  // A parse that needed error recovery can truncate a token (`/@(etc)` read as
-  // `/@`), so a license, which relieves an ask, is only read from a whole one.
+  // A token the parse could not read as bash will (`/@(etc)` read as `/@`, a
+  // backslash-newline splitting a word) licenses nothing, since a license
+  // relieves an ask.
   const licensed =
-    bashProgram.parsedWhole() &&
+    bashProgram.readsVerbatim() &&
     namesNothingOnDisk(uncoveredEntries, normalizer);
   const payload = buildBashExternalDirectoryAskPayload({
     command,
@@ -162,10 +163,10 @@ export function describeBashExternalDirectoryGate(
 
 /**
  * Whether every uncovered path earns the nothing-on-disk delegation license
- * (ADR 0007, amendment 8): located (resolved against a known working directory
- * from a spelling the shell does not rewrite), not a proven write, and naming nothing on disk below the filesystem root. One path
- * that fails withholds it from the whole ask, since a link's verdict covers
- * the whole command.
+ * (ADR 0007, amendment 8): located (spelled verbatim as the absolute path it
+ * names), not a proven write, and naming nothing on disk below the filesystem
+ * root. One path that fails withholds it from the whole ask, since a link's
+ * verdict covers the whole command.
  */
 function namesNothingOnDisk(
   entries: readonly UncoveredExternalPath[],
