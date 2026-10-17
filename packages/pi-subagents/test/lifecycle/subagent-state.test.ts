@@ -322,77 +322,6 @@ describe("SubagentState — resetForResume", () => {
 		expect(state.consumedAt).toBeUndefined();
 		expect(state.consumed).toBe(false);
 	});
-
-	describe("run ordinal", () => {
-		it("numbers the first run 1", () => {
-			const state = new SubagentState({ status: "queued" });
-			expect(state.run).toBe(1);
-		});
-
-		it("does not count the first run's start as a new run", () => {
-			const state = new SubagentState({ status: "queued" });
-			state.markRunning(1000);
-			expect(state.run).toBe(1);
-		});
-
-		it("counts each resume as a new run", () => {
-			const state = new SubagentState({ status: "completed" });
-			state.resetForResume(9000);
-			state.markCompleted("second", 9500);
-			state.resetForResume(9900);
-			expect(state.run).toBe(3);
-		});
-	});
-
-	describe("superseded outcome", () => {
-		it("retains what the reset run ended with", () => {
-			const state = new SubagentState({
-				status: "completed",
-				result: "first result",
-				startedAt: 1000,
-				completedAt: 5000,
-				pendingQuestion: "Which one?",
-				workspaceNotice: "Saved to branch x.",
-			});
-			state.recordUpdate("owed");
-			state.recordUpdate("announced");
-			state.markUpdateAnnounced("announced");
-
-			state.resetForResume(9000);
-
-			expect(state.supersededOutcome(1)).toEqual({
-				status: "completed",
-				result: "first result",
-				error: undefined,
-				startedAt: 1000,
-				completedAt: 5000,
-				pendingQuestion: "Which one?",
-				workspaceNotice: "Saved to branch x.",
-				runUpdates: ["owed"],
-			});
-		});
-
-		it("answers nothing for the run still current", () => {
-			const state = new SubagentState({ status: "completed", result: "first result" });
-			state.resetForResume(9000);
-			expect(state.supersededOutcome(2)).toBeUndefined();
-		});
-
-		it("answers nothing before any resume", () => {
-			const state = new SubagentState({ status: "completed", result: "first result" });
-			expect(state.supersededOutcome(1)).toBeUndefined();
-		});
-
-		it("keeps only the most recently superseded run", () => {
-			const state = new SubagentState({ status: "completed", result: "first result" });
-			state.resetForResume(9000);
-			state.markCompleted("second result", 9500);
-			state.resetForResume(9900);
-
-			expect(state.supersededOutcome(1)).toBeUndefined();
-			expect(state.supersededOutcome(2)?.result).toBe("second result");
-		});
-	});
 });
 
 describe("SubagentState — turn budget", () => {
@@ -436,14 +365,6 @@ describe("SubagentState — turn budget", () => {
 		const state = new SubagentState({ status: "completed", turnBudget: WARNED });
 		state.resetForResume(9000);
 		expect(state.turnBudget).toBeUndefined();
-	});
-
-	it("a superseded outcome keeps the budget the reset run ended with", () => {
-		const state = new SubagentState({ status: "running", result: "first" });
-		state.setTurnBudget(WARNED);
-		state.markCompleted("first", 5000);
-		state.resetForResume(9000);
-		expect(state.supersededOutcome(1)?.turnBudget).toEqual(WARNED);
 	});
 });
 

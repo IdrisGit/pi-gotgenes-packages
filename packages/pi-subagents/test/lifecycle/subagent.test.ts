@@ -1304,6 +1304,32 @@ describe("Subagent", () => {
 			resumed.resolve(turnLoopResult({ responseText: "second" }));
 			await agent.promise;
 		});
+
+		it("keeps only the most recently replaced run's outcome", async () => {
+			const stub = createSubagentSessionStub();
+			const third = Promise.withResolvers<TurnLoopResult>();
+			stub.runTurnLoop
+				.mockResolvedValueOnce(turnLoopResult({ responseText: "first result" }))
+				.mockResolvedValueOnce(turnLoopResult({ responseText: "second result" }))
+				.mockReturnValueOnce(third.promise);
+			const agent = makeSubagent({
+				status: "running",
+				execution: makeStubExecution({
+					createSubagentSession: async () => toSubagentSession(stub),
+					// Two resumes, each the moment the run before it settles.
+					observer: { onRunFinished: (a) => { if (stub.runTurnLoop.mock.calls.length < 3) void a.resume("continue", { background: true }); } },
+				}),
+			});
+			agent.start();
+
+			const wait = await agent.waitUntilSettled(new AbortController().signal);
+
+			// The slot holds the second run; the first, the one waited on, is gone.
+			expect(stub.runTurnLoop).toHaveBeenCalledTimes(3);
+			expect([wait.kind, agent.status]).toEqual(["unsettled", "running"]);
+			third.resolve(turnLoopResult({ responseText: "third" }));
+			await agent.promise;
+		});
 	});
 
 	describe("ask-back", () => {

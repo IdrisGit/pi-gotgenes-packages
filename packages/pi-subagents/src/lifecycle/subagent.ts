@@ -187,6 +187,13 @@ export class Subagent {
 	private currentRun: SubagentRun;
 
 	/**
+	 * The run the latest resume replaced and what it ended with, kept for a carrier
+	 * that was waiting on it when the resume began. One slot: a second resume
+	 * during one wait would need the first resumed run to settle inside it.
+	 */
+	private lastReplaced?: { run: SubagentRun; outcome: SettledOutcome };
+
+	/**
 	 * Whether this agent's current run is in the background: the run in flight,
 	 * or the last one to end. The initial run takes the spawn's mode.
 	 *
@@ -525,10 +532,10 @@ export class Subagent {
 	 * is not necessarily the run that was waited on.
 	 */
 	async waitUntilSettled(signal: AbortSignal): Promise<WaitOutcome> {
-		const waitedRun = this.state.run;
+		const waitedRun = this.currentRun;
 		const handle = this._promise;
 		if (handle && this.isActive()) await settleOrAbort(handle, signal);
-		const superseded = this.state.run === waitedRun ? undefined : this.state.supersededOutcome(waitedRun);
+		const superseded = this.currentRun === waitedRun ? undefined : this.supersededOutcome(waitedRun);
 		if (superseded) return { kind: "superseded", outcome: superseded };
 		return this.isActive() ? { kind: "unsettled" } : { kind: "settled" };
 	}
@@ -567,6 +574,9 @@ export class Subagent {
 	 * started notification has fired, by the time resume() returns.
 	 */
 	private async continueSession(session: SubagentSession, prompt: string, options: ResumeRunOptions): Promise<void> {
+		// Before the reset clears it: a waiter on the outgoing run may still need to
+		// deliver what it ended with.
+		this.lastReplaced = { run: this.currentRun, outcome: this.settledOutcome() };
 		// After resetForResume, which releases the previous run's handles.
 		this.resetForResume(Date.now());
 		const run = new SubagentRun("resume", options.background);
@@ -577,6 +587,29 @@ export class Subagent {
 		if (run.aborted) this.abort();
 		this.execution.observer?.onRunStarted?.(this, run.kind);
 		await this.runOnSession(run, session, prompt);
+	}
+
+	/**
+	 * What `run` ended with, once a resume has replaced it; undefined for the
+	 * current run, and for any run before the most recently replaced one.
+	 */
+	private supersededOutcome(run: SubagentRun): SettledOutcome | undefined {
+		return this.lastReplaced?.run === run ? this.lastReplaced.outcome : undefined;
+	}
+
+	/** The current run's outcome fields, as a carrier renders them. */
+	private settledOutcome(): SettledOutcome {
+		return {
+			status: this.status,
+			result: this.result,
+			error: this.error,
+			startedAt: this.startedAt,
+			completedAt: this.completedAt,
+			pendingQuestion: this.pendingQuestion,
+			workspaceNotice: this.workspaceNotice,
+			runUpdates: this.runUpdates,
+			turnBudget: this.turnBudget,
+		};
 	}
 
 	/** Transition to running state. Sets status and startedAt. */
