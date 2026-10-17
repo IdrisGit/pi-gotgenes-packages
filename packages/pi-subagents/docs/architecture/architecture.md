@@ -273,7 +273,7 @@ classDiagram
 ```mermaid
 stateDiagram-v2
     [*] --> queued : run created (with its agent, or by a resume)
-    queued --> running : start() — at once, or when capacity frees for a queued spawn
+    queued --> running : start() — at once, or when capacity frees for a queued background run
     queued --> stopped : stopQueued() — never started
     running --> completed : agent finished, including after the turn-budget warning
     running --> error : unhandled exception
@@ -390,11 +390,11 @@ src/
 │   └── session-dir.ts              session directory derivation
 │
 ├── lifecycle/                      agent execution and state tracking
-│   ├── subagent-manager.ts         collection manager + observer wiring + session-retention sweep (consumption-aware; an unanswered question holds the safety cap); the resume choke point, refusing from the record's own predicate and reporting a discriminated outcome, so every front door declines the same resumes; a door that returns before the resumed run ends starts one synchronously, and each resume's caller decides whether its outcome is claimed
+│   ├── subagent-manager.ts         collection manager + observer wiring + session-retention sweep (consumption-aware; an unanswered question holds the safety cap); the resume choke point, refusing from the record's own predicate and reporting a discriminated outcome, so every front door declines the same resumes; a door that returns before the resumed run ends starts one synchronously, and each resume's caller decides whether its outcome is claimed; admits a background resume through the limiter like a background spawn, while a foreground one starts at once
 │   ├── create-subagent-session.ts  assembly factory: MCP pattern expansion, Pi built-in selection, session creation, spawn-tool denylist, core child-tool install, binding
 │   ├── subagent-session.ts         born-complete child session: one turn loop for every run (the first carries the parent context and announces completion), steer, shutdown-then-dispose teardown
 │   ├── turn-limits.ts              turn-budget policy: TurnBudget, the TurnBudgetTracker that decides warnings and stops, resolveTurnLimits (a session's limits, resolved at creation), normalizeMaxTurns (minimum 2)
-│   ├── subagent.ts                 owns full execution lifecycle (run, resume, abort, steer, wait-until-settled); a teardown with no result text to carry its addendum records it as a notice and announces one produced after delivery; answers why a resume would be refused (resumeRefusal, including a live run), which the resume choke point and every result carrier read rather than re-deriving; reports a resume's start as well as its end; holds its current run and reads its outcome through it, starting each resume as a new run that marks the one it replaces; wait-until-settled hands back the run the wait began on
+│   ├── subagent.ts                 owns full execution lifecycle (run, resume, abort, steer, wait-until-settled); a teardown with no result text to carry its addendum records it as a notice and announces one produced after delivery; answers why a resume would be refused (resumeRefusal, including a live run and a resume still queued for a slot), which the resume choke point and every result carrier read rather than re-deriving; reports a resume's start as well as its end; holds its current run and reads its outcome through it, starting each resume as a new run that marks the one it replaces, born queued and started when its scheduler admits it (a run stopped while it waits never starts); wait-until-settled hands back the run the wait began on
 │   ├── subagent-state.ts           what spans a subagent's runs: lifetime metrics and live activity (accumulators, last progress), plus the status vocabulary and its classification predicates
 │   ├── subagent-run.ts             one run of a subagent and its outcome: kind (initial or resume), mode, status and result with their transitions, question, workspace notice, turn budget, and an update ledger that renders only what no announcement delivered; delivery carries a revocable claim per carrier (each releases only its own handle) and a one-way consumption latch; born queued with its own abort lever, it wires the caller's signal when it starts and keeps the record-observer unsubscribe until it ends
 │   ├── record-observer.ts          session-event stats observer; stamps each event as the run's last progress
@@ -1105,7 +1105,7 @@ The sweep tests drive the real interval through fake timers; the `_superseded`, 
 
 Release: independent
 
-#### [#1013] Admit a background resume through `maxConcurrent`
+#### ✅ [#1013] Admit a background resume through `maxConcurrent`
 
 **Cause:** admission through the concurrency gate is a fact about a run, but only the initial run is scheduled on the limiter.
 A resume starts directly, so since [#987] a background resume runs at capacity where a background spawn would queue.
@@ -1118,6 +1118,12 @@ A resume starts directly, so since [#987] a background resume runs at capacity w
 - **Outcome:** a background resume at capacity queues and starts when a slot frees, or the decision not to queue is recorded with its reason; pinned either way.
 - **Commit type:** to be decided at plan time.
 - **Impact 3 / Risk 3 / Priority 9.**
+
+Landed: a background resume, from the tool's `run_in_background: true` and from `SubagentsService.resume()`, is admitted through the limiter like a background spawn, and a foreground tool resume starts at once.
+`Subagent.resume` takes a `RunScheduler`: the resume's run is born queued (claimed when the caller asks) and starts when admitted, and a run stopped while it waited never starts, which the guard reads on the run rather than the record.
+`stopQueued` ends a queued run on its own kind's path, so a stopped queued resume publishes `subagents:resumed` once.
+A record whose resume is queued refuses another with the new `resume-queued` member of `ResumeRefusal`, a `fix!:` because the union is published; the tool's launch message says a resume was queued, with its position.
+`concurrency-limiter.ts` needed no change.
 
 Release: independent
 
@@ -1179,7 +1185,7 @@ flowchart TD
     S1049 --> S1051
     S1049 --> S1012["✅ #1012<br/>Background resume widget row"]
     S1050 -.soft.-> S1051
-    S1050 --> S1013["#1013<br/>Resume admission"]
+    S1050 --> S1013["✅ #1013<br/>Resume admission"]
     S1051 -.soft.-> S1013
     S1012 -.soft.-> S1013
     S1013 -.soft.-> S1079["#1079<br/>Queued report body"]
@@ -1202,7 +1208,7 @@ Every Track A step rewrites `lifecycle/subagent.ts`, so those steps sequence rat
 ### Release batches
 
 - Independently releasable: [#947], [#1048], [#1049], [#1050], [#1012], [#1051], [#1013], [#1079], [#912], [#1017].
-- Release vehicles: [#947] (`feat:` or `fix:`, decided at plan time), [#1049] (`fix:` for [#949]), [#1050] (`fix:` for the resume's workspace rule), [#1012] (`fix!:`), [#1051] (`fix:` for a stopped run's late result landing on its resume), [#1013] (decided at plan time), [#1079] (`fix:`), [#912] (`feat:`), and [#1017] (`docs:` for the configuration note).
+- Release vehicles: [#947] (`feat:` or `fix:`, decided at plan time), [#1049] (`fix:` for [#949]), [#1050] (`fix:` for the resume's workspace rule), [#1012] (`fix!:`), [#1051] (`fix:` for a stopped run's late result landing on its resume), [#1013] (`fix!:` for the `resume-queued` refusal), [#1079] (`fix:`), [#912] (`feat:`), and [#1017] (`docs:` for the configuration note).
   [#1048] is `refactor:` only and cuts no release on its own.
 - No batches: every step leaves the package releasable, and the refactoring steps preserve behavior.
 
