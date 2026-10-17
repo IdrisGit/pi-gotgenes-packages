@@ -35,3 +35,21 @@ The plan has two steps: a `test:` commit that drops the judge's Vitest `#src`/`#
 #### Deferred tidyings
 
 None — the assessor's rejected items (dropping tsconfig `paths`, a shared `makeService` fixture, a payload builder) were declined as unnecessary, not deferred.
+
+## Stage: Implementation — TDD (2026-10-17T04:27:14Z)
+
+### Session summary
+
+I completed both TDD steps as planned: the `test:` commit that drops the judge's Vitest `#src`/`#test` alias, then the `build:` commit that bumps the dev pins to `pi-permission-system` 40.3.0 and Pi 1.0.0 and repairs the two test literals.
+The test count is unchanged at 69; `src/` and `peerDependencies` are untouched, and `next-version.sh` reports nothing to release.
+
+### Observations
+
+- No deviations from the plan.
+  Every red, green, and killing mutation produced the result the plan predicted.
+  - Step 1: pointing `#src/*` at `./lib/*` failed all 7 test files.
+  - Step 2: deleting `decidingPath` gave TS2741, deleting `isToolFullyDenied` gave TS2322, and restoring the alias reproduced `Cannot find module '#src/service/permission-events'` (1 file failed, 55 passed).
+- `pnpm add` again added `minimumReleaseAgeExclude` entries automatically, rewriting the entry as `27.0.0 || 40.3.0`.
+  The prune that followed was gated on `grep -c '0\.84\.4\|27\.0\.0' pnpm-lock.yaml` reporting 0, and `pnpm install --frozen-lockfile` passed afterward.
+- Pre-completion reviewer: PASS.
+  It independently enumerated every `#src`/`#test` specifier in the judge and confirmed that no workspace package depends on a pruned version.
