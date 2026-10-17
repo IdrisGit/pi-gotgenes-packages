@@ -498,6 +498,22 @@ describe("PathNormalizer", () => {
       expect(normalizer.namesNothingBelowRoot(path)).toBe(false);
     });
 
+    test.each(["/", "/.", "//", "/.."])(
+      "the filesystem root (%s) exists → false",
+      (spelling) => {
+        expect(
+          normalizer.namesNothingBelowRoot(normalizer.forPath(spelling)),
+        ).toBe(false);
+      },
+    );
+
+    test("a win32 drive root exists → false", () => {
+      const win32Normalizer = new PathNormalizer(win32PathFlavor, "C:\\proj");
+      expect(
+        win32Normalizer.namesNothingBelowRoot(win32Normalizer.forPath("C:\\")),
+      ).toBe(false);
+    });
+
     test("a literal-only path has nothing to probe → false", () => {
       expect(
         normalizer.namesNothingBelowRoot(normalizer.forLiteral("Sheet1/B1")),

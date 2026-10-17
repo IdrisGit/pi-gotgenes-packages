@@ -229,6 +229,13 @@ describe("describeBashExternalDirectoryGate", () => {
       ).toBeUndefined();
     });
 
+    it.each(["rm -rf /", "chmod -R 777 /", "ls /", "cat /."])(
+      "withholds it from the filesystem root itself (%s)",
+      async (command) => {
+        expect(await licenseOf(command)).toBeUndefined();
+      },
+    );
+
     it("withholds it from a proven write", async () => {
       expect(await licenseOf(`echo x > ${ABSENT_AT_ROOT}/f`)).toBeUndefined();
     });

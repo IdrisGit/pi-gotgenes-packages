@@ -290,7 +290,8 @@ export class PathNormalizer {
    * is the root itself. The nothing-on-disk delegation license is built from
    * this answer (ADR 0007 §8).
    *
-   * A literal-only path has no canonical form to probe, so it answers `false`.
+   * A literal-only path has no canonical form to probe, and the root itself
+   * exists, so both answer `false`.
    * Only "no such entry" continues the walk; any other error answers `false`,
    * so an entry the probe cannot see past never counts as absent.
    */
@@ -298,6 +299,8 @@ export class PathNormalizer {
     const canonical = accessPath.boundaryValue();
     if (!canonical) return false;
     const impl = this.flavor.impl;
+    // The root itself exists, so a path that is the root names something.
+    if (impl.dirname(canonical) === canonical) return false;
     for (
       let current = canonical, parent = impl.dirname(current);
       parent !== current;
