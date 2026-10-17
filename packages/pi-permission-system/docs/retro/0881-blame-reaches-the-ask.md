@@ -92,3 +92,20 @@ The `pi-permission-system` suite went from 6316 to 6344 tests (+28).
 [#880]: https://github.com/gotgenes/pi-packages/issues/880
 [#952]: https://github.com/gotgenes/pi-packages/issues/952
 [#1062]: https://github.com/gotgenes/pi-packages/issues/1062
+[#1077]: https://github.com/gotgenes/pi-packages/issues/1077
+
+## Stage: Sync (worktree) (2026-10-17T02:20:29Z)
+
+### Session summary
+
+Pre-push `pnpm run lint` and `pnpm fallow dead-code` passed on the branch.
+The plan's marker is `**Release:** ship now — batch "declared-effects" tail (this issue completes the batch)`, so the root's `/ship` names `pi-permission-system` for release, carrying [#880]'s deferred `feat:` with this issue's `fix:`.
+
+**Peer session transcript:** `/Users/chris/.pi/agent/sessions/--Users-chris-development-pi-pi-packages-worktrees-issue-881--/2026-10-16T05-54-04-912Z_01a14346-53ee-736d-90a6-0dfbea70fb86.jsonl` — read with `read_session_file({ path: "<path>" })`.
+
+### Observations
+
+- The TDD stage's open reviewer warning (the `pi-permission-model-judge` fixture lacking `matchedSpelling` and `decidingPath`) was put to the operator, who chose to file it now: [#1077].
+  The judge has no architecture doc, so there is no open phase and `roadmap-fit` recorded nothing.
+- The judge-fixture fix belongs with the bump of the judge's `27.0.0` devDependency pin, since adding the fields earlier is an excess-property error against that version.
+  It does not block this release.
