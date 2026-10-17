@@ -21,7 +21,7 @@ It now makes one exception, decided per ask: a bash command's `external_director
 
 - names nothing on disk below the filesystem root (the first entry along the path is `/` itself, so `/Sheet1/B1` qualifies and `~/new/file` does not),
 - is not the root itself (`rm -rf /` never qualifies),
-- is spelled as the absolute path it names: a relative path (`../x`, or anything after a `cd`), a `.` or `..` segment, or a glob, brace, `$` expansion, command substitution, or escape (as in `/e?c/passwd`) never qualifies, and
+- is a whole word spelled as the absolute path it names: a token glued to anything else (``/e`echo tc`/passwd``, `--file=/x`), a relative path (`../x`, or anything after a `cd`), a `.` or `..` segment, or a glob, brace, `$` expansion, command substitution, or escape (as in `/e?c/passwd`) never qualifies, and
 - is not a proven write (an output redirect such as `> /newtop`, or a `commandEffects` writer).
 
 That is the shape of a token that only looks like a path, such as the spreadsheet cell in `officecli set data.xlsx /Sheet1/B1`.
