@@ -561,17 +561,17 @@ export class Subagent {
 			return Promise.reject(new Error("Subagent not configured for resume — missing session"));
 		}
 
-		this._promise = this.continueSession(subagentSession, prompt, options);
+		const run = this.beginResume(options);
+		this._promise = this.startResumedRun(run, subagentSession, prompt, options.signal);
 		return this._promise;
 	}
 
 	/**
-	 * The resume's own prefix, then the shared run body. Always resolves.
-	 *
-	 * Synchronous up to the turn loop, so the record reads running, and the
-	 * started notification has fired, by the time resume() returns.
+	 * A resume's birth: it replaces the current run with a new queued run of its
+	 * own, claimed when the caller asks, so a carrier's claim is in place before
+	 * the run can start.
 	 */
-	private async continueSession(session: SubagentSession, prompt: string, options: ResumeRunOptions): Promise<void> {
+	private beginResume(options: ResumeRunOptions): SubagentRun {
 		// The resume is a new run, so nothing the previous run held carries over:
 		// its handles are released, and it is marked replaced for any carrier that
 		// still holds it.
@@ -580,7 +580,22 @@ export class Subagent {
 		const run = new SubagentRun("resume", options.background);
 		if (options.claimOutcome) run.claim();
 		this.currentRun = run;
-		this.startRun(run, options.signal);
+		return run;
+	}
+
+	/**
+	 * A resume's start, then the shared run body. Always resolves.
+	 *
+	 * Synchronous up to the turn loop, so the record reads running, and the
+	 * started notification has fired, by the time this returns its promise.
+	 */
+	private async startResumedRun(
+		run: SubagentRun,
+		session: SubagentSession,
+		prompt: string,
+		signal: AbortSignal | undefined,
+	): Promise<void> {
+		this.startRun(run, signal);
 		// Cancelled before it started: the turn loop takes no turn on a fired lever,
 		// so the resume ends like one aborted mid-run.
 		if (run.aborted) this.abort();
