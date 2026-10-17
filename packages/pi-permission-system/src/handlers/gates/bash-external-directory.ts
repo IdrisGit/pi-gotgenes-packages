@@ -106,6 +106,11 @@ export function describeBashExternalDirectoryGate(
   }));
 
   const surface = worstEntry.surface;
+  // A parse that needed error recovery can truncate a token (`/@(etc)` read as
+  // `/@`), so a license, which relieves an ask, is only read from a whole one.
+  const licensed =
+    bashProgram.parsedWhole() &&
+    namesNothingOnDisk(uncoveredEntries, normalizer);
   const payload = buildBashExternalDirectoryAskPayload({
     command,
     externalPaths: disclosures,
@@ -136,9 +141,7 @@ export function describeBashExternalDirectoryGate(
       command,
       accessIntent: {
         ...accessFactsFromPath(surface, worstEntry.path),
-        ...(namesNothingOnDisk(uncoveredEntries, normalizer)
-          ? { delegationLicense: "nothing-on-disk" as const }
-          : {}),
+        ...(licensed ? { delegationLicense: "nothing-on-disk" as const } : {}),
       },
     },
     logContext: {

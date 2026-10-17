@@ -11,6 +11,7 @@ import {
   collectSalvagedCommands,
 } from "./command-enumeration";
 import { WordReader } from "./node-text";
+import { parseUnresolvedWithin } from "./parse-health";
 import { type BashReparser, getParser, getWarmBashParser } from "./parser";
 import { ShellVariables } from "./shell-variable-expansion";
 import { withSalvagedRoots } from "./unresolved-salvage";
@@ -47,6 +48,7 @@ export class BashProgram {
     private readonly commandUnits: readonly BashCommand[],
     private readonly resolvedExternalAccesses: readonly BashExternalPath[],
     private readonly resolvedRuleCandidates: readonly BashPathRuleCandidate[],
+    private readonly primaryParseWhole: boolean,
   ) {}
 
   /**
@@ -101,7 +103,7 @@ export class BashProgram {
     options?: BashParseOptions,
   ): BashProgram {
     const tree = parser.parse(command);
-    if (!tree) return new BashProgram(command, [], [], []);
+    if (!tree) return new BashProgram(command, [], [], [], false);
 
     try {
       return withSalvagedRoots(tree.rootNode, parser, (salvaged) => {
@@ -123,6 +125,7 @@ export class BashProgram {
           ],
           externalAccesses,
           ruleCandidates,
+          !parseUnresolvedWithin(tree.rootNode),
         );
       });
     } finally {
@@ -190,5 +193,18 @@ export class BashProgram {
    */
   pathRuleCandidates(): BashPathRuleCandidate[] {
     return [...this.resolvedRuleCandidates];
+  }
+
+  /**
+   * Whether the grammar read the whole command without error recovery.
+   *
+   * Where it could not, tree-sitter invents the structure around the failure,
+   * so a token can stand truncated (`/@(etc|var)` read as `/@`) and the slices
+   * name paths the command does not reach. The slices stay usable for asking,
+   * which only ever surfaces more; a fact that would *relieve* an ask, such as
+   * the nothing-on-disk delegation license, must not be read from them.
+   */
+  parsedWhole(): boolean {
+    return this.primaryParseWhole;
   }
 }

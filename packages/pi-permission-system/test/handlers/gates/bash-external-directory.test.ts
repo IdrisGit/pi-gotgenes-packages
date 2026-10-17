@@ -254,6 +254,18 @@ describe("describeBashExternalDirectoryGate", () => {
       },
     );
 
+    it.each([
+      ["@(", "shopt -s extglob\nrm -rf /@(etc|var)"],
+      ["+(", "shopt -s extglob\nls x /+(etc)"],
+      ["!(", "shopt -s extglob\nls x /!(zzz)"],
+      ["mid-word @(", "shopt -s extglob\nls x /e@(t)c"],
+    ])(
+      "withholds it from a command the parse could not read whole (extglob %s)",
+      async (_, command) => {
+        expect(await licenseOf(command)).toBeUndefined();
+      },
+    );
+
     it("withholds it from a proven write", async () => {
       expect(await licenseOf(`echo x > ${ABSENT_AT_ROOT}/f`)).toBeUndefined();
     });
