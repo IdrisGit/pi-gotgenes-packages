@@ -17,7 +17,7 @@ If you run no chain link, or run only a deny-first link (including the first-par
 ## What changed
 
 The checkpoint downgraded every link `allow` on the `path` and `external_directory` families to `defer`, so the ask fell through to an interactive prompt.
-It now makes one exception, decided per ask: a bash command's `external_directory` ask carries the license when **every** path the ask flags
+It now makes one exception, decided per ask: a bash command's `external_directory` ask carries the license when the command parses whole (an extglob operand such as `/@(etc|var)` does not) and **every** path the ask flags
 
 - names nothing on disk below the filesystem root (the first entry along the path is `/` itself, so `/Sheet1/B1` qualifies and `~/new/file` does not),
 - is not the root itself (`rm -rf /` never qualifies),
