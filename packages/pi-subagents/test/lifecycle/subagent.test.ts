@@ -3,7 +3,7 @@ import type { CreateSubagentSessionParams } from "#src/lifecycle/create-subagent
 import { Subagent, type SubagentExecution, type SubagentLifecycleObserver } from "#src/lifecycle/subagent";
 import type { RunKind } from "#src/lifecycle/subagent-run";
 import { SubagentSession, type TurnLoopOptions, type TurnLoopResult } from "#src/lifecycle/subagent-session";
-import { SubagentState, type SubagentStateInit } from "#src/lifecycle/subagent-state";
+import { SubagentState, type SubagentStatus } from "#src/lifecycle/subagent-state";
 import type { TurnBudget } from "#src/lifecycle/turn-limits";
 import type { WorkspacePrepareContext, WorkspaceProvider } from "#src/lifecycle/workspace";
 import type { RunConfig } from "#src/runtime";
@@ -74,7 +74,13 @@ function parkLoopUntilSignalled(turnLoop: ReturnType<typeof createSubagentSessio
 	return loop;
 }
 
-interface MakeSubagentOptions extends SubagentStateInit {
+interface MakeSubagentOptions {
+	// The initial run's outcome seeds, named one by one so each lands in a literal
+	// the type checker reads.
+	status?: SubagentStatus;
+	result?: string;
+	startedAt?: number;
+	completedAt?: number;
 	id?: string;
 	type?: SubagentType;
 	description?: string;
@@ -89,14 +95,14 @@ interface MakeSubagentOptions extends SubagentStateInit {
 
 /** Construct a Subagent with default identity and a stub execution, overridable per test. */
 function makeSubagent(overrides: MakeSubagentOptions = {}): Subagent {
-	const { id, type, description, isBackground, execution, state, ...stateOverrides } = overrides;
+	const { id, type, description, isBackground, execution, state, status, result, startedAt, completedAt } = overrides;
 	return new Subagent({
 		id: id ?? "1",
 		type: type ?? "general-purpose",
 		description: description ?? "test",
 		isBackground: isBackground ?? true,
 		execution: execution ?? makeStubExecution(),
-		state: state ?? (Object.keys(stateOverrides).length > 0 ? new SubagentState(stateOverrides) : undefined),
+		state: state ?? new SubagentState({ status, result, startedAt, completedAt }),
 	});
 }
 

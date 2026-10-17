@@ -4,7 +4,7 @@ import { SubagentState } from "#src/lifecycle/subagent-state";
 import { createMockSession } from "#test/helpers/mock-session";
 
 function makeState() {
-  return new SubagentState({ status: "running" });
+  return new SubagentState();
 }
 
 describe("subscribeSubagentObserver", () => {
@@ -225,7 +225,7 @@ describe("subscribeSubagentObserver", () => {
       { type: "turn_end" },
     ])("stamps the time of a $type event", (event) => {
       const session = createMockSession();
-      const state = new SubagentState({ status: "running", startedAt: 1000 });
+      const state = new SubagentState({ lastProgressAt: 1000 });
       subscribeSubagentObserver(session, state);
 
       session.emit(event);
