@@ -31,7 +31,7 @@ The last three steps cover the queued launch message, the manager admission `fix
 - `limiter.schedule` starts a free-slot task synchronously, so a background resume below capacity still reads `running` when `startResume` returns.
   The limiter's extra microtask, and a slot freeing in `.finally` after the run's promise resolves, matter for the step 7 test arrangement at limit 1.
 - Filed #1079: a queued agent's `get_subagent_result` body falls through to `No output.`.
-  `roadmap-fit` recorded it as a new Phase 23 step after #1013, by operator decision (`02f4431b`).
+  `roadmap-fit` recorded it as a new Phase 23 step after #1013, by operator decision, in the commit "docs(pi-subagents): disposition #1079 against Phase 23".
 - Accepted and not filed:
   - A service `resume()` awaiting a queued resume that `abort(id)` stopped resolves only when a slot frees, which is the same limiter semantics a stopped queued spawn already has.
   - The never-started wording for a stopped queued resume.
