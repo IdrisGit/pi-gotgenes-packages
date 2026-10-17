@@ -958,6 +958,8 @@ End-of-planning `src/` totals: 12,420 LOC across 73 files, 2,065 tests across 85
 - Scout inventory (scattered) — the items in files a step already edits ride that step (operator decision, 2026-10-09).
   `result.content[0].text` in the tool tests (102 sites across 5 files) rides [#947]; the events-observer `{id, type, description}` payload triad (5 sites) and the `subagent-session.test.ts` items (an assistant-message literal repeated 10+ times and a third local session mock) ride [#1050]; `(manager as any).sweep()` (8 sites) rides [#1051]; and `prompts.test.ts`'s duplicated append-mode test, with the local `AgentConfig` factories in four test files, rides [#1017].
   The rest is named as the leading candidate for Phase 24, a craftsmanship lean phase if it still stands at that discovery, rather than re-deferred to a boy-scout path that has not reduced it: `settings.ts` `sanitize()` range-check triplication, `index.ts`'s untested inline `createSession` lambda, `sendMessage.mock.calls[0][0]` in `notification.test.ts` (6 sites), the `createManager()` observer defaults, and the five `src/` functions over 60 lines (`index.ts`'s default export, `createSubagentSession`, `toToolDefinition`, `runForeground`, and `resolveSpawnConfig`).
+- [#1079] — filed by [#1013]'s planning; becomes a new step after [#1013] (operator decision).
+  A queued agent's `get_subagent_result` body falls through to `No output.`; queued spawns already reach it, and [#1013] makes a background resume reach it too.
 
 #### Deferred tidyings swept
 
@@ -1119,6 +1121,20 @@ A resume starts directly, so since [#987] a background resume runs at capacity w
 
 Release: independent
 
+#### [#1079] A queued agent's report says it has not started
+
+**Cause:** the shared outcome body has no arm for a run still waiting on a concurrency slot.
+`renderOutcomeBody` (`src/observation/outcome-delivery.ts`) words `running`, `error`, and a queued run that was stopped, so a queued run falls through to the empty-result fallback and `get_subagent_result` reports `No output.` under `Status: queued`.
+
+- **Smell:** Category C (a status the carrier's body does not distinguish from an empty result).
+- **Target:** `src/observation/outcome-delivery.ts` (`renderOutcomeBody`) and its tests.
+- **Soft dependency:** [#1013] — a background resume at capacity becomes a second way to reach the queued state.
+- **Outcome:** a queued agent's report says it is waiting for a concurrency slot and has not started, and points at `wait: true`; pinned.
+- **Commit type:** `fix:`.
+- **Impact 2 / Risk 1 / Priority 10.**
+
+Release: independent
+
 #### ✅ [#912] Let a consumer ask whether an agent is resumable
 
 **Cause:** the query surface cannot report a decision the core already makes.
@@ -1166,6 +1182,7 @@ flowchart TD
     S1050 --> S1013["#1013<br/>Resume admission"]
     S1051 -.soft.-> S1013
     S1012 -.soft.-> S1013
+    S1013 -.soft.-> S1079["#1079<br/>Queued report body"]
     S1017["#1017<br/>Drop pre-0.86 arms"]
 ```
 
@@ -1184,8 +1201,8 @@ Every Track A step rewrites `lifecycle/subagent.ts`, so those steps sequence rat
 
 ### Release batches
 
-- Independently releasable: [#947], [#1048], [#1049], [#1050], [#1012], [#1051], [#1013], [#912], [#1017].
-- Release vehicles: [#947] (`feat:` or `fix:`, decided at plan time), [#1049] (`fix:` for [#949]), [#1050] (`fix:` for the resume's workspace rule), [#1012] (`fix!:`), [#1051] (`fix:` for a stopped run's late result landing on its resume), [#1013] (decided at plan time), [#912] (`feat:`), and [#1017] (`docs:` for the configuration note).
+- Independently releasable: [#947], [#1048], [#1049], [#1050], [#1012], [#1051], [#1013], [#1079], [#912], [#1017].
+- Release vehicles: [#947] (`feat:` or `fix:`, decided at plan time), [#1049] (`fix:` for [#949]), [#1050] (`fix:` for the resume's workspace rule), [#1012] (`fix!:`), [#1051] (`fix:` for a stopped run's late result landing on its resume), [#1013] (decided at plan time), [#1079] (`fix:`), [#912] (`feat:`), and [#1017] (`docs:` for the configuration note).
   [#1048] is `refactor:` only and cuts no release on its own.
 - No batches: every step leaves the package releasable, and the refactoring steps preserve behavior.
 
@@ -1327,5 +1344,6 @@ The upstream test suite is run periodically as a regression canary for the sessi
 [#1049]: https://github.com/gotgenes/pi-packages/issues/1049
 [#1050]: https://github.com/gotgenes/pi-packages/issues/1050
 [#1051]: https://github.com/gotgenes/pi-packages/issues/1051
+[#1079]: https://github.com/gotgenes/pi-packages/issues/1079
 [ADR-0002]: ../decisions/0002-extensions-on-a-minimal-core.md
 [ADR-0004]: ../decisions/0004-reconsider-ui-direction.md
