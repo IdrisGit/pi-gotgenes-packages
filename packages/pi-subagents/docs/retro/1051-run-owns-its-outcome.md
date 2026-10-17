@@ -78,3 +78,46 @@ The plan's `**Release:**` marker reads `ship independently` and its rationale ca
 - No deferred work beyond the two deferred tidyings in the Planning stage note.
 
 [#1058]: https://github.com/gotgenes/pi-packages/issues/1058
+
+## Stage: Final Retrospective (2026-10-17T16:09:51Z)
+
+### Session summary
+
+The worktree lane landed all 17 branch commits by fast-forward, CI passed on `d26b7117`, and `pi-subagents` released as 24.0.1 (a patch, carried by the step 7 `fix:`).
+The issue closed with a comment anchored on the waiter commit; no co-shipped issue or third-party PR was in range, and the worktree was torn down.
+Across the four stages the plan executed as written, except for one condition the plan left open and the reviewer discharged.
+
+### Observations
+
+#### What went well
+
+- The Tidy-First assessor's fixture-seed partition (step 4) turned every later field move into a `tsc` excess-property error in the fixtures, so no seed was dropped silently by the rest spread it replaced.
+  This is the first time a preparatory step in this package paid off as a type-level tripwire across five slices.
+- Each test-adding step named the mutation that must kill it, and the TDD stage recorded the two predictions that missed (the [#987] tests on consumption) instead of quietly accepting a different kill.
+- The Sync stage caught that the plan's `**Release:**` rationale ("refactor-only") no longer held and told `/ship` to expect a patch; `/ship` then confirmed it with `next-version.sh` rather than with the plan's prose.
+
+#### What caused friction (agent side)
+
+- `missing-context` — Planning surfaced a latent defect (the assessor's "an aborted run's late completion lands on the resume") and wrote step 7 as conditional: "retype it `fix:` if the implementing session finds it reachable".
+  Neither the planner nor the implementer traced the trigger; the step 7 commit body said reachability "was not verified".
+  The pre-completion reviewer traced it in a few reads (`abort()` marks `stopped` synchronously, `resumeRefusal` admits a stopped record, so `SubagentsService.abort` then `resume` hits it).
+  Impact: one WARN round, a scripted-rebase reword behind a backup tag, a docs fix commit (`docs(pi-subagents): name the fallow scope and the fix in #1051's landed note`), and a second reviewer round.
+- `instruction-violation` (self-identified, in this retro) — `/ship`'s close comment cited five SHAs, but the ancestor check ran on four of them, and ran before drafting rather than on the draft.
+  The prompt names exactly this failure ("Verify the draft, not your intent to cite").
+  Impact: none; the missed SHA (`fed1e02d`) was pasted from command output and resolves on `main`, and `issue_close` validated resolution.
+
+#### What caused friction (user side)
+
+- The planning gate offered three decisions, all answered with the recommended option; the step 7 reachability was presented as a plan-time unknown rather than a fourth decision.
+  An operator question there ("is it reachable now?") would have moved the trace to planning, where it cost the least.
+
+### Diagnostic details
+
+- **Model-performance correlation** — Planning and TDD ran on `claude-opus-5-5` (high thinking); the mechanical Sync stage switched to `claude-sonnet-5-5`, an appropriate downshift.
+  All three subagents (`tidy-first-assessor`, two `pre-completion-reviewer` rounds) ran on `claude-sonnet-5-5`, read from their transcripts; the reviewer found the reachable defect the Opus stages left open, so no mismatch.
+- **Feedback-loop gap analysis** — no gap: TDD ran `check` and the package suite after every step and a targeted mutation before each commit.
+  The reviewer's first `pnpm run lint` timed out at 900 s and passed on re-run, alongside 10 load-induced `pi-permission-system` timeouts in the full suite; both point at a loaded machine, not this change.
+
+### Changes made
+
+1. `.pi/skills/tidy-first/SKILL.md` (Step 3, "Triage into the plan"): a finding that the change alters observable behavior is a latent defect; trace its trigger before writing the plan and type the step on the result, never leaving the commit type conditional on the implementing session.
