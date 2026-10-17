@@ -82,9 +82,10 @@ export interface SubagentRecord {
   outputFile?: string;
   /**
    * Why `resume()` would refuse this agent at snapshot time; absent when it
-   * would start a run. `still-running` clears when the run settles, and a
-   * queued agent's `no-session` clears once it starts; the other reasons are
-   * final.
+   * would start a run. `still-running` clears when the run settles,
+   * `resume-queued` (a resume waiting for a concurrency slot) clears when that
+   * resumed run settles, and a queued agent's `no-session` clears once it
+   * starts; the other reasons are final.
    */
   resumeRefusal?: ResumeRefusal;
 }

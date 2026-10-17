@@ -58,11 +58,14 @@ export type { SubagentStatus } from "#src/lifecycle/subagent-state";
  * `sessionReleased`, and `workspaceDisposed`, while the result carriers never
  * consulted any of them and advertised the resume regardless.
  *
- * `still-running` is the one transient member: it is a refusal of *now* rather
- * than of ever, and the carriers word it accordingly.
+ * `still-running` and `resume-queued` are the transient members: each is a
+ * refusal of *now* rather than of ever, clearing when the run in question
+ * settles, and the carriers word them accordingly. `resume-queued` names a
+ * resume waiting for a concurrency slot, which has not started running.
  */
 export type ResumeRefusal =
 	| "still-running"
+	| "resume-queued"
 	| "no-session"
 	| "session-released"
 	| "workspace-disposed";
@@ -279,7 +282,8 @@ export class Subagent {
 	 * record whose session was released *and* whose workspace is gone reports the
 	 * session — the door's message for it names the retention window, which is
 	 * the fact that explains both. A live run outranks all of them: nothing about
-	 * a settled record is decided yet.
+	 * a settled record is decided yet. So does a resume still waiting for its
+	 * slot, which would otherwise read resumable a second time.
 	 *
 	 * A getter rather than a predicate method because the result carriers read it
 	 * as a field: `OutcomeAddenda` and `AgentReport` both declare it, and a live
@@ -291,6 +295,9 @@ export class Subagent {
 		// session" does. A queued agent is not running and keeps the no-session
 		// answer, which is the truth about it.
 		if (this.isRunning()) return "still-running";
+		// A resume waiting for its slot holds the live session it will continue, so it
+		// is checked before the session; a queued initial run has none to hold.
+		if (this.status === "queued" && this.currentRun.kind === "resume") return "resume-queued";
 		if (!this.isSessionReady()) return this._sessionReleased ? "session-released" : "no-session";
 		if (this.workspaceDisposed) return "workspace-disposed";
 		return undefined;

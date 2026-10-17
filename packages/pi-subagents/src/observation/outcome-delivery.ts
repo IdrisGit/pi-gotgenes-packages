@@ -79,11 +79,11 @@ function statusMeaning(outcome: StatusOutcome): StatusMeaning | undefined {
  * that continues someone else's sentence is different grammar, not a different
  * fact — the split `STATUS_MEANINGS` makes between `label` and `detail`.
  *
- * `still-running` is excluded by type rather than by omission: a refusal that
- * lifts when the run settles asks the parent to wait, where these three ask it
- * to give up, so it gets its own sentence in the renderer below.
+ * The transient refusals are excluded by type rather than by omission: a
+ * refusal that lifts when a run settles asks the parent to wait, where these
+ * three ask it to give up, so they get their own sentence in the renderer below.
  */
-const RESUME_REFUSAL_CLAUSES: Record<Exclude<ResumeRefusal, "still-running">, string> = {
+const RESUME_REFUSAL_CLAUSES: Record<Exclude<ResumeRefusal, "still-running" | "resume-queued">, string> = {
 	// Deliberately not "...no session to resume": the clause is followed by a
 	// colon, and "resume:" is the exact token the parent must not see here.
 	"no-session": "it has no active session",
@@ -148,7 +148,9 @@ export function renderQuestionAffordance(
 		.split("\n")
 		.map((line) => `  ${line}`)
 		.join("\n");
-	if (refusal === "still-running") {
+	// A queued resume's run is new and its predecessor was replaced, so neither
+	// carries a question through a real record; the type still requires the arm.
+	if (refusal === "still-running" || refusal === "resume-queued") {
 		return (
 			"\n\nThis agent asked a question before it finished running, so it cannot be " +
 			`resumed yet:\n\n${quoted}\n\n` +

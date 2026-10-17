@@ -805,6 +805,18 @@ describe("Subagent", () => {
 			expect(createTestSubagent({ status: "queued" }).resumeRefusal).toBe("no-session");
 		});
 
+		it("refuses a second resume while one waits for a slot, until that run settles", async () => {
+			const { agent } = createResumableAgent();
+			const { schedule, openSlot } = gatedScheduler();
+			void agent.resume("continue", { background: true }, schedule);
+
+			expect(agent.resumeRefusal).toBe("resume-queued");
+
+			openSlot();
+			await agent.promise;
+			expect(agent.resumeRefusal).toBeUndefined();
+		});
+
 		it("reports session-released once the retention sweep has freed the session", async () => {
 			const agent = createRunnableAgent();
 			await agent.run();

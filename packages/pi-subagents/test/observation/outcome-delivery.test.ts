@@ -134,6 +134,7 @@ describe("renderQuestionAffordance", () => {
 		it("names no resume call for any reason", () => {
 			for (const refusal of [
 				"still-running",
+				"resume-queued",
 				"no-session",
 				"session-released",
 				"workspace-disposed",
@@ -164,6 +165,12 @@ describe("renderQuestionAffordance", () => {
 		it("indents every line of a multi-line question", () => {
 			expect(renderQuestionAffordance("agent-1", "A or B?\nOr C?", "still-running")).toContain(
 				"  A or B?\n  Or C?",
+			);
+		});
+
+		it("asks the parent to wait out a resume queued for a slot, as it does a live run", () => {
+			expect(renderQuestionAffordance("agent-7", "Which config?", "resume-queued")).toBe(
+				renderQuestionAffordance("agent-7", "Which config?", "still-running"),
 			);
 		});
 	});

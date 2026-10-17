@@ -159,6 +159,23 @@ describe("AgentTool — resume path", () => {
 			);
 		});
 
+		it("tells the parent a resume is already waiting for a slot", async () => {
+			const deps = createToolDeps();
+			mockResumeRefusal(deps, "resume-queued");
+
+			const result = await execute(deps, {
+				prompt: "continue",
+				description: "resume",
+				subagent_type: "general-purpose",
+				resume: "agent-1",
+			});
+
+			expect(textOf(result)).toBe(
+				'Agent "agent-1" already has a resume waiting for a concurrency slot; wait for that run ' +
+					"to finish before resuming it again (get_subagent_result with wait: true returns when it does).",
+			);
+		});
+
 		it("names a torn-down workspace as the reason a resume cannot re-enter it", async () => {
 			const deps = createToolDeps();
 			mockResumeRefusal(deps, "workspace-disposed");
@@ -491,7 +508,7 @@ describe("AgentTool — resume path", () => {
 			expect(record.consumed).toBe(false);
 		});
 
-		it.for(["unknown-agent", "still-running"] as const)(
+		it.for(["unknown-agent", "still-running", "resume-queued"] as const)(
 			"words a %s refusal the way the foreground resume does",
 			async (reason) => {
 				const foreground = createToolDeps();
