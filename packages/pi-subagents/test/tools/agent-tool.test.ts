@@ -314,8 +314,8 @@ describe("AgentTool — resume path", () => {
 				resume: "agent-1",
 			});
 
-			// The claim is the manager's to take, at the one edge it can be taken:
-			// resetForResume runs synchronously inside Subagent.resume().
+			// The claim is the manager's to take: it passes it into the resume, whose
+			// run is born claimed.
 			expect(deps.manager.startResume).toHaveBeenCalledWith("agent-1", "continue", foregroundStart);
 		});
 

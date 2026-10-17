@@ -126,6 +126,109 @@ describe("SubagentRun", () => {
 		});
 	});
 
+	describe("consumption", () => {
+		it("defaults to not consumed", () => {
+			const run = new SubagentRun("initial", true);
+			expect(run.consumed).toBe(false);
+			expect(run.consumedAt).toBeUndefined();
+		});
+
+		it("markConsumed sets consumedAt and flips consumed true", () => {
+			const run = new SubagentRun("initial", true);
+			run.markConsumed(5000);
+			expect(run.consumed).toBe(true);
+			expect(run.consumedAt).toBe(5000);
+		});
+
+		it("markConsumed defaults consumedAt to Date.now() when not provided", () => {
+			const run = new SubagentRun("initial", true);
+			const before = Date.now();
+			run.markConsumed();
+			const after = Date.now();
+			expect(run.consumedAt).toBeGreaterThanOrEqual(before);
+			expect(run.consumedAt).toBeLessThanOrEqual(after);
+		});
+
+		it("markConsumed keeps the first collection time (idempotent ??=)", () => {
+			const run = new SubagentRun("initial", true);
+			run.markConsumed(5000);
+			run.markConsumed(9999);
+			expect(run.consumedAt).toBe(5000);
+		});
+
+		it("seeds consumedAt from the constructor", () => {
+			const run = new SubagentRun("initial", true, { consumedAt: 4200 });
+			expect(run.consumed).toBe(true);
+			expect(run.consumedAt).toBe(4200);
+		});
+
+		it("is the run's own: another run starts unconsumed", () => {
+			const first = new SubagentRun("initial", true);
+			first.markConsumed(5000);
+			expect(new SubagentRun("resume", true).consumed).toBe(false);
+		});
+	});
+
+	describe("carrier claims", () => {
+		it("defaults to unclaimed", () => {
+			expect(new SubagentRun("initial", true).claimed).toBe(false);
+		});
+
+		it("claim marks the outcome as owned by a carrier", () => {
+			const run = new SubagentRun("initial", true);
+			run.claim();
+			expect(run.claimed).toBe(true);
+		});
+
+		it("is independent of consumption", () => {
+			const run = new SubagentRun("initial", true);
+			const claim = run.claim();
+			expect(run.consumed).toBe(false);
+			run.markConsumed(5000);
+			claim.release();
+			expect(run.claimed).toBe(false);
+			expect(run.consumedAt).toBe(5000);
+		});
+
+		it("keeps the outcome claimed while another holder remains", () => {
+			const run = new SubagentRun("initial", true);
+			const first = run.claim();
+			run.claim();
+
+			first.release();
+
+			expect(run.claimed).toBe(true);
+		});
+
+		it("hands responsibility back once every holder released", () => {
+			const run = new SubagentRun("initial", true);
+			const first = run.claim();
+			const second = run.claim();
+
+			second.release();
+			first.release();
+
+			expect(run.claimed).toBe(false);
+		});
+
+		it("releasing one handle twice drops only its own claim", () => {
+			const run = new SubagentRun("initial", true);
+			const first = run.claim();
+			run.claim();
+
+			first.release();
+			first.release();
+
+			expect(run.claimed).toBe(true);
+		});
+
+		it("is the run's own: another run starts unclaimed", () => {
+			const first = new SubagentRun("initial", true);
+			first.claim();
+			expect(new SubagentRun("resume", true).claimed).toBe(false);
+		});
+	});
+
 	describe("release", () => {
 		it("clears both the signal listener and the observer unsubscribe", () => {
 			const controller = new AbortController();

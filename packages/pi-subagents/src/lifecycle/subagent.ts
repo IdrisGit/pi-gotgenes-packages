@@ -13,9 +13,9 @@ import { debugLog } from "#src/debug";
 import type { CreateSubagentSessionParams } from "#src/lifecycle/create-subagent-session";
 import type { ParentSnapshot } from "#src/lifecycle/parent-snapshot";
 import { subscribeSubagentObserver } from "#src/lifecycle/record-observer";
-import { type RunKind, SubagentRun } from "#src/lifecycle/subagent-run";
+import { type CarrierClaim, type RunKind, type RunOutcomeInit, SubagentRun } from "#src/lifecycle/subagent-run";
 import type { SubagentSession, TurnLoopResult } from "#src/lifecycle/subagent-session";
-import { type CarrierClaim, type SettledOutcome, SubagentState, type SubagentStatus } from "#src/lifecycle/subagent-state";
+import { type SettledOutcome, SubagentState, type SubagentStatus } from "#src/lifecycle/subagent-state";
 import type { TurnBudget } from "#src/lifecycle/turn-limits";
 import type { LifetimeUsage } from "#src/lifecycle/usage";
 import type { WorkspaceProvider } from "#src/lifecycle/workspace";
@@ -123,6 +123,12 @@ export interface ResumeRunOptions {
 	background: boolean;
 	/** Cancels the resumed run through its own lever, ending it like `abort()` does. */
 	signal?: AbortSignal;
+	/**
+	 * The caller will deliver this outcome to the parent, so nothing announces
+	 * it: the resume's run is born claimed. Omitted, the resumed outcome is
+	 * announced like any other completion.
+	 */
+	claimOutcome?: boolean;
 }
 
 export interface SubagentInit {
@@ -138,6 +144,9 @@ export interface SubagentInit {
 
 	/** Lifecycle status and metrics. Defaults to a fresh queued state. */
 	state?: SubagentState;
+
+	/** Seeds for the initial run's outcome; production never passes them. */
+	outcome?: RunOutcomeInit;
 }
 
 export class Subagent {
@@ -155,9 +164,9 @@ export class Subagent {
 	get stoppedWhileQueued(): boolean { return this.state.stoppedWhileQueued; }
 	get startedAt(): number { return this.state.startedAt; }
 	get completedAt(): number | undefined { return this.state.completedAt; }
-	get consumedAt(): number | undefined { return this.state.consumedAt; }
-	get consumed(): boolean { return this.state.consumed; }
-	get claimed(): boolean { return this.state.claimed; }
+	get consumedAt(): number | undefined { return this.currentRun.consumedAt; }
+	get consumed(): boolean { return this.currentRun.consumed; }
+	get claimed(): boolean { return this.currentRun.claimed; }
 	get pendingQuestion(): string | undefined { return this.state.pendingQuestion; }
 	get runUpdates(): readonly string[] { return this.state.runUpdates; }
 	/**
@@ -350,7 +359,7 @@ export class Subagent {
 		this.id = init.id;
 		this.type = init.type;
 		this.description = init.description;
-		this.currentRun = new SubagentRun("initial", init.isBackground);
+		this.currentRun = new SubagentRun("initial", init.isBackground, init.outcome);
 
 		// Lifecycle status and metrics — fresh queued state unless one is supplied
 		this.state = init.state ?? new SubagentState();
@@ -580,6 +589,7 @@ export class Subagent {
 		// After resetForResume, which releases the previous run's handles.
 		this.resetForResume(Date.now());
 		const run = new SubagentRun("resume", options.background);
+		if (options.claimOutcome) run.claim();
 		this.currentRun = run;
 		run.start(options.signal, () => this.abort());
 		// Cancelled before it started: the turn loop takes no turn on a fired lever,
@@ -646,9 +656,9 @@ export class Subagent {
 		this.state.markStopped(completedAt);
 	}
 
-	/** Record the parent collected this agent's outcome. Idempotent. */
+	/** Record the parent collected the current run's outcome. Idempotent. */
 	markConsumed(at?: number): void {
-		this.state.markConsumed(at);
+		this.currentRun.markConsumed(at);
 	}
 
 	/** The announcement channel delivered this update; no outcome carrier repeats it. */
@@ -657,21 +667,12 @@ export class Subagent {
 	}
 
 	/**
-	 * A carrier has committed to delivering this outcome; nothing else announces
-	 * it. The returned handle lets a carrier that abandons its commitment (a
-	 * waiter whose parent turn was interrupted) drop only its own.
+	 * A carrier has committed to delivering the current run's outcome; nothing
+	 * else announces it. The returned handle lets a carrier that abandons its
+	 * commitment (a waiter whose parent turn was interrupted) drop only its own.
 	 */
 	claim(): CarrierClaim {
-		return this.state.claim();
-	}
-
-	/**
-	 * No carrier holds this outcome; announcing is owed again. Called when a
-	 * resume nobody claims starts (SubagentManager.startResume), clearing the
-	 * claims previous carriers left after they delivered.
-	 */
-	releaseClaims(): void {
-		this.state.releaseClaims();
+		return this.currentRun.claim();
 	}
 
 	/**
@@ -720,7 +721,7 @@ export class Subagent {
 		this._pendingSteers = [];
 	}
 
-	/** Reset for resume: running status, new startedAt, clear completedAt/result/error/consumedAt; release the previous run. */
+	/** Reset for resume: running status, new startedAt, clear completedAt/result/error; release the previous run. */
 	resetForResume(startedAt: number): void {
 		this.state.resetForResume(startedAt);
 		this.currentRun.release();

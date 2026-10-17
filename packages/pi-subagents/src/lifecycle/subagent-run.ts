@@ -1,5 +1,5 @@
 /**
- * subagent-run.ts — One run of a subagent and the handles it holds until it ends.
+ * subagent-run.ts — One run of a subagent: its outcome, and the handles it holds until it ends.
  *
  * A subagent is a sequence of runs: the initial run, then one per resume. Each
  * run is born with its own abort lever, wires the caller's signal when it
@@ -8,22 +8,57 @@
  *
  * A run exists before it starts: the initial run is born with its agent, and
  * waits in the queue for a concurrency slot as that agent's run.
+ *
+ * Each run's outcome is its own, so a resume starts a new run rather than
+ * resetting the last one, and a carrier holding a run reads what that run
+ * ended with whatever ran after it.
  */
 
 /** Which run of a subagent this is: the one that created its session, or a resume of it. */
 export type RunKind = "initial" | "resume";
 
-/** One run of a subagent (the initial run or a resume) and the handles it holds until it ends. */
+/**
+ * One carrier's commitment to deliver an outcome. Releasing it drops only this
+ * commitment, so the outcome stays claimed while any other carrier holds one.
+ */
+export interface CarrierClaim {
+	release(): void;
+}
+
+/** Seeds for a run's outcome, for a record built in a known state (test fixtures). */
+export interface RunOutcomeInit {
+	/** Time the parent collected the outcome; undefined = obligation still open. */
+	consumedAt?: number;
+}
+
+/** One run of a subagent (the initial run or a resume): its outcome, and the handles it holds until it ends. */
 export class SubagentRun {
 	private readonly controller = new AbortController();
 	private detachCallerSignal?: () => void;
 	private unsubscribeObserver?: () => void;
 
+	// Result delivery — whether the parent has collected this run's outcome.
+	private _consumedAt?: number;
+	get consumedAt(): number | undefined { return this._consumedAt; }
+	get consumed(): boolean { return this._consumedAt != null; }
+
+	// Result delivery — whether a carrier has committed to delivering this run's
+	// outcome. Distinct from consumption: it is revocable, where consumption is a
+	// one-way latch that also times session retention. One entry per carrier, so
+	// a carrier that abandons its commitment drops only its own: another carrier
+	// holding the same outcome still delivers it.
+	// Transient runtime ownership, so deliberately not seedable via RunOutcomeInit.
+	private readonly claims = new Set<CarrierClaim>();
+	get claimed(): boolean { return this.claims.size > 0; }
+
 	constructor(
 		readonly kind: RunKind,
 		/** Whether this run is in the background: nothing in the parent's turn waits on it. */
 		readonly inBackground: boolean,
-	) {}
+		init: RunOutcomeInit = {},
+	) {
+		this._consumedAt = init.consumedAt;
+	}
 
 	/**
 	 * Start the run: wire the caller's signal, when there is one, so firing it
@@ -55,6 +90,25 @@ export class SubagentRun {
 
 	abort(): void {
 		this.controller.abort();
+	}
+
+	/**
+	 * Record the parent collected this run's outcome. Idempotent — keeps the first
+	 * collection time (??=), so a re-read does not advance the retention clock.
+	 */
+	markConsumed(at?: number): void {
+		this._consumedAt ??= at ?? Date.now();
+	}
+
+	/**
+	 * A carrier has committed to delivering this run's outcome, so nothing else
+	 * should announce it. Unlike every other transition here, this one is
+	 * revocable.
+	 */
+	claim(): CarrierClaim {
+		const claim: CarrierClaim = { release: () => { this.claims.delete(claim); } };
+		this.claims.add(claim);
+		return claim;
 	}
 
 	/** Keep the record-observer unsubscribe until the run ends. */

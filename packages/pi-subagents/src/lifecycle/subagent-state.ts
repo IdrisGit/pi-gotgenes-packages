@@ -30,14 +30,6 @@ export type SubagentStatus =
 	| "stopped"
 	| "error";
 
-/**
- * One carrier's commitment to deliver an outcome. Releasing it drops only this
- * commitment, so the outcome stays claimed while any other carrier holds one.
- */
-export interface CarrierClaim {
-	release(): void;
-}
-
 /** What a settled run ended with: the fields an outcome carrier renders. */
 export interface SettledOutcome {
 	status: SubagentStatus;
@@ -95,8 +87,6 @@ export interface SubagentStateInit {
 	/** When the run last made progress; defaults to startedAt. */
 	lastProgressAt?: number;
 	completedAt?: number;
-	/** Time the parent collected the outcome; undefined = obligation still open. */
-	consumedAt?: number;
 	// Stats — seed a populated value without replaying the accumulation methods
 	toolUses?: number;
 	lifetimeUsage?: LifetimeUsage;
@@ -127,25 +117,6 @@ export class SubagentState {
 
 	private _completedAt?: number;
 	get completedAt(): number | undefined { return this._completedAt; }
-
-	// Result delivery — whether the parent has collected the outcome (orthogonal to status)
-	private _consumedAt?: number;
-	get consumedAt(): number | undefined { return this._consumedAt; }
-	get consumed(): boolean { return this._consumedAt != null; }
-
-	// Result delivery — whether a carrier has committed to delivering the outcome.
-	// Distinct from consumption in two ways. It is revocable, where consumption is
-	// a one-way latch that also times session retention. And it is scoped to the
-	// caller rather than the run: consumedAt records a delivery that has already
-	// happened, so a resume must clear it, while a claim records one that has not
-	// happened yet and stays live across the reset (see resetForResume).
-	// Transient runtime ownership, so deliberately not seedable via
-	// SubagentStateInit — a rehydrated record must not claim a carrier that no
-	// longer exists.
-	// One entry per carrier, so a carrier that abandons its commitment drops only
-	// its own: another carrier holding the same outcome still delivers it.
-	private readonly _claims = new Set<CarrierClaim>();
-	get claimed(): boolean { return this._claims.size > 0; }
 
 	// The question this agent ended its turn with, if it declared one. Part of the
 	// outcome like _result, and set alongside it at the terminal transition.
@@ -210,7 +181,6 @@ export class SubagentState {
 		this._startedAt = init.startedAt ?? Date.now();
 		this._lastProgressAt = init.lastProgressAt ?? this._startedAt;
 		this._completedAt = init.completedAt;
-		this._consumedAt = init.consumedAt;
 		this._toolUses = init.toolUses ?? 0;
 		// Copy so a later addUsage() cannot mutate the caller's object.
 		this._lifetimeUsage = init.lifetimeUsage
@@ -352,14 +322,6 @@ export class SubagentState {
 		}
 	}
 
-	/**
-	 * Record the parent collected the outcome. Idempotent — keeps the first
-	 * collection time (??=), so a re-read does not advance the retention clock.
-	 */
-	markConsumed(at?: number): void {
-		this._consumedAt ??= at ?? Date.now();
-	}
-
 	/** Record the question the agent ended its turn with. */
 	setPendingQuestion(question: string | undefined): void {
 		this._pendingQuestion = question;
@@ -368,21 +330,6 @@ export class SubagentState {
 	/** Record what a teardown reported when no result text could carry it. */
 	setWorkspaceNotice(notice: string): void {
 		this._workspaceNotice = notice;
-	}
-
-	/**
-	 * A carrier has committed to delivering this outcome, so nothing else should
-	 * announce it. Unlike every other transition here, this one is revocable.
-	 */
-	claim(): CarrierClaim {
-		const claim: CarrierClaim = { release: () => { this._claims.delete(claim); } };
-		this._claims.add(claim);
-		return claim;
-	}
-
-	/** Drop every carrier's commitment; announcing is owed again. */
-	releaseClaims(): void {
-		this._claims.clear();
 	}
 
 	/** Transition to stopped state. Always valid — no guard. */
@@ -403,12 +350,8 @@ export class SubagentState {
 
 	/**
 	 * Reset for resume: running status, new startedAt, clear
-	 * completedAt/result/error/consumedAt/turnBudget.
-	 *
-	 * The carrier claim deliberately survives: it belongs to the caller that asked
-	 * for the resume and will deliver its outcome, not to the run being reset.
-	 * Clearing it here would drop the claim before the caller could observe it,
-	 * since this runs synchronously before resume() returns.
+	 * completedAt/result/error/turnBudget. Consumption and carrier claims are the
+	 * run's own, so the resume's new run starts without them.
 	 */
 	resetForResume(startedAt: number): void {
 		this._status = "running";
@@ -417,7 +360,6 @@ export class SubagentState {
 		this._completedAt = undefined;
 		this._result = undefined;
 		this._error = undefined;
-		this._consumedAt = undefined;
 		this._turnBudget = undefined;
 		// A resumed run answers the old question; whether it asks a new one is
 		// decided when it terminates.

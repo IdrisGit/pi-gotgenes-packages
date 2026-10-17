@@ -92,7 +92,6 @@ export function createTestSubagent(overrides: TestSubagentOptions = {}): Subagen
 		stoppedWhileQueued: overrides.stoppedWhileQueued,
 		startedAt,
 		completedAt: seeded(overrides, "completedAt", 2000),
-		consumedAt: overrides.consumedAt,
 		// What spans runs
 		lastProgressAt: overrides.lastProgressAt ?? startedAt,
 		toolUses: overrides.toolUses ?? 3,
@@ -111,6 +110,10 @@ export function createTestSubagent(overrides: TestSubagentOptions = {}): Subagen
 			...(toolCallId ? { parentSession: { toolCallId } } : {}),
 		}),
 		state,
+		// The initial run's outcome
+		outcome: {
+			consumedAt: overrides.consumedAt,
+		},
 	});
 	// Assigned rather than passed to the constructor: run() is what sets this in
 	// production, and a passive fixture never runs.

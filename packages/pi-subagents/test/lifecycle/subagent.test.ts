@@ -328,19 +328,17 @@ describe("Subagent", () => {
 		});
 
 		describe("consumption getters", () => {
-			it("consumed defaults to false and consumedAt undefined (delegates to SubagentState)", () => {
+			it("consumed defaults to false and consumedAt undefined", () => {
 				const record = makeSubagent();
 				expect(record.consumed).toBe(false);
 				expect(record.consumedAt).toBeUndefined();
 			});
 
-			it("markConsumed delegates to SubagentState", () => {
-				const state = new SubagentState({ status: "completed" });
-				const record = makeSubagent({ state });
+			it("markConsumed records the current run's collection", () => {
+				const record = makeSubagent({ status: "completed" });
 				record.markConsumed(5000);
 				expect(record.consumed).toBe(true);
 				expect(record.consumedAt).toBe(5000);
-				expect(state.consumedAt).toBe(5000);
 			});
 		});
 
@@ -1130,8 +1128,7 @@ describe("Subagent", () => {
 					getRunConfig: () => updatesOn,
 				});
 				await agent.run();
-				agent.claim();
-				await agent.resume("keep going", { background: true });
+				await agent.resume("keep going", { background: false, claimOutcome: true });
 
 				notify("The premise is wrong.");
 
@@ -1928,6 +1925,37 @@ describe("Subagent", () => {
 	});
 
 	describe("a resume", () => {
+		describe("delivery", () => {
+			it("starts unconsumed after the parent collected the run before it", async () => {
+				const { agent } = createResumableAgent();
+				agent.markConsumed(5000);
+
+				await agent.resume("continue", { background: true });
+
+				expect([agent.consumed, agent.consumedAt]).toEqual([false, undefined]);
+			});
+
+			it("a claim on a settled run does not claim the resume that follows it", async () => {
+				const { agent } = createResumableAgent();
+				agent.claim();
+
+				await agent.resume("continue", { background: true });
+
+				expect(agent.claimed).toBe(false);
+			});
+
+			it("is born claimed when its caller carries the outcome", () => {
+				const { agent, stub } = createResumableAgent();
+				const loop = Promise.withResolvers<TurnLoopResult>();
+				stub.runTurnLoop.mockReturnValue(loop.promise);
+
+				void agent.resume("continue", { background: false, claimOutcome: true });
+
+				expect(agent.claimed).toBe(true);
+				loop.resolve(turnLoopResult({ responseText: "second" }));
+			});
+		});
+
 		describe("disposing a held workspace", () => {
 			it("disposes when the resumed child answers without asking again", async () => {
 				const { agent, workspace, stub } = await heldWorkspaceAgent();

@@ -134,8 +134,7 @@ describe("GetResultTool — carrier claim", () => {
 				observer: {
 					onRunFinished: (agent, kind) => {
 						if (kind !== "initial") return;
-						agent.claim();
-						void agent.resume("continue", { background: true });
+						void agent.resume("continue", { background: true, claimOutcome: true });
 					},
 				},
 			}),
@@ -186,8 +185,7 @@ describe("GetResultTool — a wait a resume superseded", () => {
 				observer: {
 					onRunFinished: (agent, kind) => {
 						if (kind !== "initial") return;
-						agent.claim();
-						void agent.resume("The project one.", { background: true });
+						void agent.resume("The project one.", { background: true, claimOutcome: true });
 					},
 				},
 			}),

@@ -1579,8 +1579,8 @@ describe("SubagentManager", () => {
         const id = spawnBg(manager);
         await manager.getRecord(id)!.promise;
         const record = manager.getRecord(id)!;
-        // resetForResume runs synchronously inside Subagent.resume(), so a claim
-        // taken after the await would miss the terminal edge entirely.
+        // The resume's run is born claimed, so the claim is in place before the
+        // turn loop can reach the terminal edge.
         const { promise, resolve } = Promise.withResolvers<TurnLoopResult>();
         stub.runTurnLoop.mockReturnValue(promise);
 

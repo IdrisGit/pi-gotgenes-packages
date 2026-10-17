@@ -67,13 +67,7 @@ export type ResumeStart =
   | { kind: "refused"; reason: ResumeRefusalReason };
 
 /** Per-call knobs for a resume; both doors pass their own. */
-export interface ResumeCallOptions extends ResumeRunOptions {
-  /**
-   * The caller will deliver this outcome to the parent, so nothing announces
-   * it. Omitted, the resumed outcome is announced like any other completion.
-   */
-  claimOutcome?: boolean;
-}
+export type ResumeCallOptions = ResumeRunOptions;
 
 /** A spawn's resolved identity and mode — the invariants every front door shares. */
 interface ResolvedSpawn {
@@ -417,16 +411,16 @@ export class SubagentManager {
     if (!agent) return { kind: "refused", reason: "unknown-agent" };
     const refusal = agent.resumeRefusal;
     if (refusal) return { kind: "refused", reason: refusal };
-    // Before the resume starts: resetForResume runs synchronously inside
-    // resume(), so a claim taken afterwards would miss the terminal edge.
-    // Each resume's caller decides who carries this run's outcome; a claim a
-    // previous carrier left behind belongs to an outcome already delivered, and
-    // no carrier is live on a settled record.
-    if (options.claimOutcome) agent.claim();
-    else agent.releaseClaims();
+    // Each resume's caller decides who carries its outcome: the resume's run is
+    // born claimed when the caller asks, and unclaimed otherwise, whatever
+    // carriers held the runs before it.
     // Published as agent.promise, which always resolves; it rejects only for a
     // missing session, which resumeRefusal has already refused as no-session.
-    void agent.resume(prompt, { background: options.background, signal: options.signal });
+    void agent.resume(prompt, {
+      background: options.background,
+      signal: options.signal,
+      claimOutcome: options.claimOutcome,
+    });
     return { kind: "started", record: agent };
   }
 
