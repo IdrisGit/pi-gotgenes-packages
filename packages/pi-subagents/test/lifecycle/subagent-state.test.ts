@@ -7,7 +7,6 @@ import {
 	type SubagentStateInit,
 	type SubagentStatus,
 } from "#src/lifecycle/subagent-state";
-import type { TurnBudget } from "#src/lifecycle/turn-limits";
 
 const ALL_STATUSES: SubagentStatus[] = [
 	"queued",
@@ -100,33 +99,6 @@ describe("SubagentState — incrementCompactions", () => {
 		expect(state.compactionCount).toBe(1);
 		state.incrementCompactions();
 		expect(state.compactionCount).toBe(2);
-	});
-});
-
-describe("SubagentState — turn budget", () => {
-	const WITHIN: TurnBudget = { maxTurns: 5, used: 1, phase: "within" };
-	const WARNED: TurnBudget = { maxTurns: 5, used: 3, phase: "warned" };
-
-	it("has no budget until a run's turn loop reports one", () => {
-		expect(new SubagentState().turnBudget).toBeUndefined();
-	});
-
-	it("seeds the budget from init", () => {
-		expect(new SubagentState({ turnBudget: WARNED }).turnBudget).toEqual(WARNED);
-	});
-
-	it("records each budget the running turn loop reports", () => {
-		const state = new SubagentState();
-		state.setTurnBudget(WITHIN);
-		expect(state.turnBudget).toEqual(WITHIN);
-		state.setTurnBudget(WARNED);
-		expect(state.turnBudget).toEqual(WARNED);
-	});
-
-	it("resetForResume clears the budget, which belongs to the run that produced it", () => {
-		const state = new SubagentState({ turnBudget: WARNED });
-		state.resetForResume();
-		expect(state.turnBudget).toBeUndefined();
 	});
 });
 

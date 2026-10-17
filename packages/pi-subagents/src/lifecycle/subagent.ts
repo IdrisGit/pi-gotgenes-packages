@@ -167,7 +167,7 @@ export class Subagent {
 	get consumedAt(): number | undefined { return this.currentRun.consumedAt; }
 	get consumed(): boolean { return this.currentRun.consumed; }
 	get claimed(): boolean { return this.currentRun.claimed; }
-	get pendingQuestion(): string | undefined { return this.state.pendingQuestion; }
+	get pendingQuestion(): string | undefined { return this.currentRun.pendingQuestion; }
 	get runUpdates(): readonly string[] { return this.state.runUpdates; }
 	/**
 	 * What the workspace reported at a teardown with no result text to fold it
@@ -176,8 +176,8 @@ export class Subagent {
 	 * Undefined for a run that completed normally: there the addendum rides the
 	 * result, and duplicating it here would have every carrier report it twice.
 	 */
-	get workspaceNotice(): string | undefined { return this.state.workspaceNotice; }
-	get turnBudget(): TurnBudget | undefined { return this.state.turnBudget; }
+	get workspaceNotice(): string | undefined { return this.currentRun.workspaceNotice; }
+	get turnBudget(): TurnBudget | undefined { return this.currentRun.turnBudget; }
 	get toolUses(): number { return this.state.toolUses; }
 	get lifetimeUsage(): Readonly<LifetimeUsage> { return this.state.lifetimeUsage; }
 	get compactionCount(): number { return this.state.compactionCount; }
@@ -421,7 +421,9 @@ export class Subagent {
 				parentSession: this.execution.parentSession,
 				model: this.execution.model,
 				thinkingLevel: this.execution.thinkingLevel,
-				askParent: (question) => { this.state.setPendingQuestion(question); },
+				// The session outlives this run, so a question goes to whichever run is
+				// under way when the child asks it.
+				askParent: (question) => { this.currentRun.setPendingQuestion(question); },
 				notifyParent: this.canSendUpdates(runConfig)
 					? (message) => { this.announceUpdate(message); }
 					: undefined,
@@ -457,7 +459,7 @@ export class Subagent {
 		try {
 			this.complete(run, await session.runTurnLoop(prompt, {
 				signal: run.signal,
-				onTurnBudget: (budget) => { this.state.setTurnBudget(budget); },
+				onTurnBudget: (budget) => { run.setTurnBudget(budget); },
 			}));
 		} catch (err) {
 			this.fail(run, err);
@@ -746,7 +748,7 @@ export class Subagent {
 		// answer. Every other outcome ends the run for good and tears it down here.
 		// The question was recorded by ask_parent during the run, so it is already
 		// on the record here.
-		const holdForResume = finalStatus === "completed" && this.pendingQuestion !== undefined;
+		const holdForResume = finalStatus === "completed" && run.pendingQuestion !== undefined;
 		const finalResult = holdForResume
 			? result.responseText
 			: result.responseText +
@@ -804,22 +806,15 @@ export class Subagent {
 	/** Fail a run: mark error, release its handles, best-effort workspace dispose, notify observer. */
 	private fail(run: SubagentRun, err: unknown): void {
 		run.markError(err);
-		this.clearPendingQuestion();
+		// Drop a question the child recorded before the run failed: every carrier
+		// renders a pending question as "answer by resuming me", which is not the
+		// right next action after a failure, and the failure text already tells the
+		// parent to look. An aborted run keeps its question: it reached a terminal
+		// transition with an outcome to report.
+		run.setPendingQuestion(undefined);
 		run.release();
-		this.disposeWorkspaceQuietly("error");
+		this.disposeWorkspaceQuietly(run, "error");
 		this.execution.observer?.onRunFinished?.(this, run.kind);
-	}
-
-	/**
-	 * Drop a question the child recorded before the run failed.
-	 *
-	 * Every carrier renders a pending question as "answer by resuming me", which
-	 * is not the right next action after a failure — and the failure text already
-	 * tells the parent to look. An aborted run keeps its question:
-	 * those reached a terminal transition with an outcome to report.
-	 */
-	private clearPendingQuestion(): void {
-		this.state.setPendingQuestion(undefined);
 	}
 
 	/**
@@ -834,7 +829,7 @@ export class Subagent {
 		if (this.isActive()) return;
 		// Announce what *this* disposal produced, not what the record holds: both
 		// release and teardown reach here, and the second finds nothing to dispose.
-		const notice = this.disposeWorkspaceQuietly(this.status);
+		const notice = this.disposeWorkspaceQuietly(this.currentRun, this.status);
 		if (notice) this.execution.observer?.onWorkspaceNotice?.(this, notice);
 	}
 
@@ -843,14 +838,15 @@ export class Subagent {
 	 * what it reported and handing that back.
 	 *
 	 * These are the paths with no result text left to fold the addendum into, so
-	 * it is kept on the record for the carriers to report instead. The value is
+	 * it is kept on `run`, the run whose end produced it, for the carriers to
+	 * report instead. The value is
 	 * returned as well as stored, so a caller can tell an addendum this call
 	 * produced from one an earlier disposal already recorded.
 	 */
-	private disposeWorkspaceQuietly(status: SubagentStatus): string {
+	private disposeWorkspaceQuietly(run: SubagentRun, status: SubagentStatus): string {
 		try {
 			const notice = this.workspaceBracket.dispose({ status, description: this.description });
-			if (notice) this.state.setWorkspaceNotice(notice);
+			if (notice) run.setWorkspaceNotice(notice);
 			return notice;
 		} catch (err) { debugLog(`workspace dispose (${status})`, err); return ""; }
 	}

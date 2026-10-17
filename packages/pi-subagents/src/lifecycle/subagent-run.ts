@@ -20,6 +20,7 @@ import {
 	isTerminalErrorStatus,
 	type SubagentStatus,
 } from "#src/lifecycle/subagent-state";
+import type { TurnBudget } from "#src/lifecycle/turn-limits";
 
 /** Which run of a subagent this is: the one that created its session, or a resume of it. */
 export type RunKind = "initial" | "resume";
@@ -41,6 +42,12 @@ export interface RunOutcomeInit {
 	stoppedWhileQueued?: boolean;
 	startedAt?: number;
 	completedAt?: number;
+	/** The question the run ended its turn with. */
+	pendingQuestion?: string;
+	/** What a teardown with no result text reported. */
+	workspaceNotice?: string;
+	/** The run's turn limit and its use. */
+	turnBudget?: TurnBudget;
 	/** Time the parent collected the outcome; undefined = obligation still open. */
 	consumedAt?: number;
 }
@@ -72,6 +79,22 @@ export class SubagentRun {
 	private _completedAt?: number;
 	get completedAt(): number | undefined { return this._completedAt; }
 
+	// The question this run ended its turn with, if it declared one. Part of the
+	// outcome like _result, and set while the run is under way by ask_parent.
+	private _pendingQuestion?: string;
+	get pendingQuestion(): string | undefined { return this._pendingQuestion; }
+
+	// What the workspace reported at a teardown with no result text to fold it
+	// into. Part of the outcome like _result, and set at the disposal that
+	// produced it. Undefined for a run whose addendum rode the result instead.
+	private _workspaceNotice?: string;
+	get workspaceNotice(): string | undefined { return this._workspaceNotice; }
+
+	// The run's turn budget, live: the turn loop reports it before the first turn
+	// and after each boundary, so the last report is already the outcome's.
+	private _turnBudget?: TurnBudget;
+	get turnBudget(): TurnBudget | undefined { return this._turnBudget; }
+
 	// Result delivery — whether the parent has collected this run's outcome.
 	private _consumedAt?: number;
 	get consumedAt(): number | undefined { return this._consumedAt; }
@@ -98,6 +121,9 @@ export class SubagentRun {
 		this._stoppedWhileQueued = init.stoppedWhileQueued ?? false;
 		this._startedAt = init.startedAt ?? Date.now();
 		this._completedAt = init.completedAt;
+		this._pendingQuestion = init.pendingQuestion;
+		this._workspaceNotice = init.workspaceNotice;
+		this._turnBudget = init.turnBudget;
 		this._consumedAt = init.consumedAt;
 	}
 
@@ -205,6 +231,21 @@ export class SubagentRun {
 	stopQueued(completedAt?: number): void {
 		if (this._status === "queued") this._stoppedWhileQueued = true;
 		this.markStopped(completedAt);
+	}
+
+	/** Record the question the run ended its turn with; undefined drops it. */
+	setPendingQuestion(question: string | undefined): void {
+		this._pendingQuestion = question;
+	}
+
+	/** Record what a teardown reported when no result text could carry it. */
+	setWorkspaceNotice(notice: string): void {
+		this._workspaceNotice = notice;
+	}
+
+	/** Record the budget the running turn loop reports. */
+	setTurnBudget(budget: TurnBudget): void {
+		this._turnBudget = budget;
 	}
 
 	/**

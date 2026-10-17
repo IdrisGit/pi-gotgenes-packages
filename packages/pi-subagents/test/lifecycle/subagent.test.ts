@@ -307,13 +307,6 @@ describe("Subagent", () => {
 				expect(record.responseText).toBe("");
 			});
 
-			it("turnBudget reflects state mutations via setTurnBudget", () => {
-				const state = new SubagentState();
-				const record = makeSubagent({ state });
-				state.setTurnBudget({ maxTurns: 10, used: 2, phase: "within" });
-				expect(record.turnBudget).toEqual({ maxTurns: 10, used: 2, phase: "within" });
-			});
-
 			it("activeTools reflects state mutations via addActiveTool", () => {
 				const state = new SubagentState();
 				const record = makeSubagent({ state });

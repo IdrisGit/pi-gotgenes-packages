@@ -3,13 +3,12 @@
  *
  * Owns the passive, readable state of a subagent that spans its runs — stats
  * (toolUses, lifetimeUsage, compactionCount), live-activity fields
- * (activeTools, responseText, lastProgressAt), and, until each run owns them,
- * the turn budget, the pending question, the workspace notice, and the update
- * ledger — together with the accumulation methods (incrementToolUses, addUsage,
- * incrementCompactions) and live-activity transition methods (setTurnBudget,
- * addActiveTool, removeActiveTool, resetResponseText, appendResponseText,
- * markProgress) that mutate them. A run's status, result, and timestamps live
- * on its SubagentRun.
+ * (activeTools, responseText, lastProgressAt), and, until each run owns it,
+ * the update ledger — together with the accumulation methods
+ * (incrementToolUses, addUsage, incrementCompactions) and live-activity
+ * transition methods (addActiveTool, removeActiveTool, resetResponseText,
+ * appendResponseText, markProgress) that mutate them. A run's outcome lives on
+ * its SubagentRun.
  *
  * State is encapsulated behind getters; external code reads through them but
  * mutates only via the transition/accumulation methods. The value object owns
@@ -74,12 +73,6 @@ interface RunUpdate {
 }
 
 export interface SubagentStateInit {
-	/** The question the agent ended its turn with — an outcome fact, like result. */
-	pendingQuestion?: string;
-	/** What a teardown with no result text reported — an outcome fact, like result. */
-	workspaceNotice?: string;
-	/** The run's turn limit and its use — an outcome fact, like result. */
-	turnBudget?: TurnBudget;
 	/** When the run last made progress; defaults to when the state was created. */
 	lastProgressAt?: number;
 	// Stats — seed a populated value without replaying the accumulation methods
@@ -92,23 +85,6 @@ export interface SubagentStateInit {
 }
 
 export class SubagentState {
-	// The question this agent ended its turn with, if it declared one. Part of the
-	// outcome like _result, and set alongside it at the terminal transition.
-	private _pendingQuestion?: string;
-	get pendingQuestion(): string | undefined { return this._pendingQuestion; }
-
-	// What the workspace reported at a teardown with no result text to fold it
-	// into. Part of the outcome like _result, and set at the disposal that
-	// produced it. Undefined for a run whose addendum rode the result instead.
-	private _workspaceNotice?: string;
-	get workspaceNotice(): string | undefined { return this._workspaceNotice; }
-
-	// The run's turn budget, live: the turn loop reports it before the first turn
-	// and after each boundary, so the last report is already the outcome's. Part
-	// of the outcome like _result, and cleared where a run begins (resetForResume).
-	private _turnBudget?: TurnBudget;
-	get turnBudget(): TurnBudget | undefined { return this._turnBudget; }
-
 	// The updates the child sent during this run, each remembering whether the
 	// announcement channel delivered it — so a message reaches the parent once,
 	// through whichever channel could reach it, and no carrier repeats it.
@@ -145,9 +121,6 @@ export class SubagentState {
 	get lastProgressAt(): number { return this._lastProgressAt; }
 
 	constructor(init: SubagentStateInit = {}) {
-		this._pendingQuestion = init.pendingQuestion;
-		this._workspaceNotice = init.workspaceNotice;
-		this._turnBudget = init.turnBudget;
 		this._lastProgressAt = init.lastProgressAt ?? Date.now();
 		this._toolUses = init.toolUses ?? 0;
 		// Copy so a later addUsage() cannot mutate the caller's object.
@@ -206,11 +179,6 @@ export class SubagentState {
 		this._lastProgressAt = at;
 	}
 
-	/** Record the budget the running turn loop reports. */
-	setTurnBudget(budget: TurnBudget): void {
-		this._turnBudget = budget;
-	}
-
 	/** Record an update the child sent during this run, owed to a carrier until delivered. */
 	recordUpdate(message: string): void {
 		this._runUpdates.push({ message, announced: false });
@@ -226,26 +194,11 @@ export class SubagentState {
 		if (owed) owed.announced = true;
 	}
 
-	/** Record the question the agent ended its turn with. */
-	setPendingQuestion(question: string | undefined): void {
-		this._pendingQuestion = question;
-	}
-
-	/** Record what a teardown reported when no result text could carry it. */
-	setWorkspaceNotice(notice: string): void {
-		this._workspaceNotice = notice;
-	}
-
 	/**
-	 * Reset for resume: clear the turn budget, the question, and the update
-	 * ledger. The rest of the outcome is the run's own, so the resume's new run
-	 * starts without it.
+	 * Reset for resume: clear the update ledger. The rest of the outcome is the
+	 * run's own, so the resume's new run starts without it.
 	 */
 	resetForResume(): void {
-		this._turnBudget = undefined;
-		// A resumed run answers the old question; whether it asks a new one is
-		// decided when it terminates.
-		this._pendingQuestion = undefined;
 		// The updates belong to the run that produced them, and this starts another.
 		this._runUpdates.length = 0;
 	}
