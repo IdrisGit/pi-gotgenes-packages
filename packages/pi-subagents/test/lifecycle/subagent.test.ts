@@ -558,6 +558,17 @@ describe("Subagent", () => {
 			expect(onRunFinished).toHaveBeenCalledExactlyOnceWith(record, "initial");
 		});
 
+		it("ends a resume stopped before its slot opened as a resume", () => {
+			const onRunFinished = vi.fn();
+			const { agent } = createResumableAgent({ observer: { onRunFinished } });
+			void agent.resume("continue", { background: true }, gatedScheduler().schedule);
+
+			agent.stopQueued();
+
+			expect(onRunFinished).toHaveBeenCalledExactlyOnceWith(agent, "resume");
+			expect([agent.status, agent.stoppedWhileQueued]).toEqual(["stopped", true]);
+		});
+
 		it("leaves stoppedWhileQueued false for a running agent aborted mid-run", () => {
 			const record = makeSubagent({ status: "running" });
 			expect(record.abort()).toBe(true);

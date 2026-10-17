@@ -661,15 +661,16 @@ export class Subagent {
 	}
 
 	/**
-	 * Stop an agent that never started, then notify like every other terminal
-	 * transition. No listener release: nothing is wired before run().
-	 * The record leaves the active set here, so the thunk the limiter runs when
-	 * the slot finally frees no-ops on guardedRun()'s guard — one notification.
+	 * Stop a run still waiting for its slot, then notify like every other
+	 * terminal transition. No listener release: a run wires nothing until it
+	 * starts. The run leaves the active set here, so the thunk the limiter runs
+	 * when the slot finally frees no-ops on its guard — one notification.
 	 */
 	stopQueued(): void {
 		this.currentRun.stopQueued();
-		// A queued record has never run, so the run it never started is its initial one.
-		this.execution.observer?.onRunFinished?.(this, "initial");
+		// The queued run is the agent's initial run or a resume waiting for its slot,
+		// and it ends on that run's own path.
+		this.execution.observer?.onRunFinished?.(this, this.currentRun.kind);
 	}
 
 	/**
