@@ -20,7 +20,9 @@ The checkpoint downgraded every link `allow` on the `path` and `external_directo
 It now makes one exception, decided per ask: a bash command's `external_directory` ask carries the license when **every** path the ask flags
 
 - names nothing on disk below the filesystem root (the first entry along the path is `/` itself, so `/Sheet1/B1` qualifies and `~/new/file` does not),
-- was resolved against a known working directory (a relative path after `cd "$DIR"` never qualifies), and
+- is not the root itself (`rm -rf /` never qualifies),
+- was resolved against a known working directory (a relative path after `cd "$DIR"` never qualifies),
+- is spelled as the path that runs (a glob, brace, `$` expansion, command substitution, or escape, as in `/e?c/passwd`, never qualifies), and
 - is not a proven write (an output redirect such as `> /newtop`, or a `commandEffects` writer).
 
 That is the shape of a token that only looks like a path, such as the spreadsheet cell in `officecli set data.xlsx /Sheet1/B1`.

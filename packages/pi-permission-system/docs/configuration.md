@@ -356,7 +356,7 @@ This holds for an ask forwarded up from a subagent exactly as it does for a loca
 See [migration/0635-forwarded-ask-delegation-envelope.md](migration/0635-forwarded-ask-delegation-envelope.md).
 
 One exception is granted per ask, never per family: the **nothing-on-disk license**.
-A bash command's `external_directory` ask carries it when every path the ask flags names nothing on disk below the filesystem root, was resolved against a known working directory, and is not a proven write (an output redirect, or a `commandEffects` writer).
+A bash command's `external_directory` ask carries it when every path the ask flags names nothing on disk below the filesystem root (the root itself does not qualify), was resolved against a known working directory from a spelling the shell does not rewrite (no glob, brace, `$` expansion, command substitution, or escape), and is not a proven write (an output redirect, or a `commandEffects` writer).
 That is the shape of a token that only looks like a path, such as the spreadsheet cell in `officecli set data.xlsx /Sheet1/B1`.
 A link's `allow` on a licensed ask is honored, and the review log records `authorizer_allow_licensed` naming the link; one flagged path that exists, or sits under an existing directory, withholds the license from the whole ask.
 A tool's ask (`write`, `edit`, an extension tool) never carries it, and the `path` family takes no license.

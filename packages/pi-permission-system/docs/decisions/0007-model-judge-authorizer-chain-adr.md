@@ -212,8 +212,8 @@ The population is the **shape-indistinguishable** token: one an absolute-path sh
 The checkpoint honors a link's `allow` on an `external_directory`-family ask when the ask carries the **nothing-on-disk license**.
 The bash external-directory gate grants it iff, for **every** path it left uncovered:
 
-1. the path was located and has a canonical form — a relative token after a non-literal `cd` is resolved against the session cwd only as a display guess, and a POSIX-absolute token on a win32 host stays literal (Git Bash keeps it so, per ADR 0003), so neither can be probed and neither licenses;
-2. walking that canonical form toward the root, the first entry `lstat` finds is the filesystem root itself — only "no such entry" continues the walk, so an ancestor that is a file, or one the process cannot read, refuses the license;
+1. the path was located and has a canonical form — a relative token after a non-literal `cd` is resolved against the session cwd only as a display guess, a token whose spelling the shell rewrites at run time (a glob, a brace, a parameter or command substitution, an escape) is probed as typed rather than as the path that runs, and a POSIX-absolute token on a win32 host stays literal (Git Bash keeps it so, per ADR 0003), so none of the three licenses;
+2. the path is not the root, and walking its canonical form toward the root, the first entry `lstat` finds is the filesystem root itself — the root exists, so `rm -rf /` names something; only "no such entry" continues the walk, so an ancestor that is a file, or one the process cannot read, refuses the license;
 3. its attributed effect is not a proven `write` — a redirect destination or a declared writer is a file by syntax or by the user's word, not a token whose shape is in doubt.
 
 A nonexistent path cannot be read, so the `_read` half of such an ask is vacuous.
@@ -246,6 +246,12 @@ The later entries record no paths, so their commands were re-projected through `
 Every one of the 31 is a non-path token — `gh api` routes, Pi slash commands, `git log -L` ranges, commit-message prose, and regex fragments.
 The 18 recent asks' licensing paths were 18 `unproven` and one core read, which is why the bound does not ask for a proven read.
 Another 14 asks mixed an unrooted token with a real external path, and those keep prompting, because the license is granted only when every path qualifies.
+The expansion and root conditions were added after a pre-completion review found that a glob (`cat /e?c/passwd`) and the root itself (`rm -rf /`) had licensed; re-run through the shipped gate over the same recent asks, 8 of 430 carry the license: seven tokens that name no host path (`git log -L` ranges, commit-message and `echo` prose, a container mount path) and one real edit target, `sudo -n --ed /nonexistent-dir-xyz/f`, which keeps its own bash-surface floor ask.
+
+**An operand the gate never flagged.**
+The license judges only the paths the gate flagged.
+A computed operand that resolves inside the tree (`X=/etc; cat $X/passwd /Sheet1/B1`) is not flagged, so it does not withhold the license.
+That is the projection's existing reach, which the human prompt shows the same way, and it is accepted rather than refused per command: refusing every command that holds a computed word would withhold the license from the shapes it exists for.
 
 **What this does not decide.**
 It does not lift the cap for a whole surface family, globally ([#684]'s flag) or per link ([#983]'s `authorizerTrust` map).
