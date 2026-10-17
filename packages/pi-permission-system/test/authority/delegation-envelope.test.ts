@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type { Authorizer, AuthorizerVerdict } from "#src/authority/authorizer";
 import { encloseInDelegationEnvelope } from "#src/authority/delegation-envelope";
+import type { ForwardedAccessFacts } from "#src/authority/permission-forwarding";
 import type { PromptPermissionDetails } from "#src/authority/permission-prompter";
 import type { PermissionQuery } from "#src/service";
 import { makeAuthorizerLog } from "#test/helpers/authorizer-log-fixtures";
@@ -10,10 +11,14 @@ function makeQuery(): PermissionQuery {
   return { checkPermission: vi.fn(), getToolPermission: vi.fn() };
 }
 
-/** Build details whose gate-computed surface is `accessIntentSurface`. */
+/**
+ * Build details whose gate-computed surface is `accessIntentSurface`, with any
+ * further access facts spread over the defaults.
+ */
 function makeDetails(
   accessIntentSurface: string | undefined,
   displaySurface?: string | null,
+  facts: Partial<ForwardedAccessFacts> = {},
 ): PromptPermissionDetails {
   return makePromptDetails({
     surface: displaySurface,
@@ -24,6 +29,7 @@ function makeDetails(
             surface: accessIntentSurface,
             matchValues: ["/some/value"],
             boundaryValue: null,
+            ...facts,
           },
   });
 }
