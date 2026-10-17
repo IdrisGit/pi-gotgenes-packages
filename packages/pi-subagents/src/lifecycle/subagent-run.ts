@@ -2,9 +2,12 @@
  * subagent-run.ts — One run of a subagent and the handles it holds until it ends.
  *
  * A subagent is a sequence of runs: the initial run, then one per resume. Each
- * run is born with its own abort lever and its caller-signal wiring, and keeps
- * the record observer's unsubscribe until it ends, so nothing a run wires
- * outlives it on the per-agent record.
+ * run is born with its own abort lever, wires the caller's signal when it
+ * starts, and keeps the record observer's unsubscribe until it ends, so nothing
+ * a run wires outlives it on the per-agent record.
+ *
+ * A run exists before it starts: the initial run is born with its agent, and
+ * waits in the queue for a concurrency slot as that agent's run.
  */
 
 /** Which run of a subagent this is: the one that created its session, or a resume of it. */
@@ -16,21 +19,21 @@ export class SubagentRun {
 	private detachCallerSignal?: () => void;
 	private unsubscribeObserver?: () => void;
 
-	/**
-	 * Wire the caller's signal, when there is one, so firing it calls onCallerAbort.
-	 *
-	 * A signal that has already fired never fires again, so a listener on it would
-	 * be dead on arrival: the run is born aborted instead. onCallerAbort is not
-	 * called for it — the run is not yet anyone's current run, so the owner
-	 * reads `aborted` once it holds the run.
-	 */
 	constructor(
 		readonly kind: RunKind,
 		/** Whether this run is in the background: nothing in the parent's turn waits on it. */
 		readonly inBackground: boolean,
-		callerSignal: AbortSignal | undefined,
-		onCallerAbort: () => void,
-	) {
+	) {}
+
+	/**
+	 * Start the run: wire the caller's signal, when there is one, so firing it
+	 * calls onCallerAbort.
+	 *
+	 * A signal that has already fired never fires again, so a listener on it would
+	 * be dead on arrival: the run is aborted at its start instead. onCallerAbort is
+	 * not called for it — the owner reads `aborted` once the run has started.
+	 */
+	start(callerSignal: AbortSignal | undefined, onCallerAbort: () => void): void {
 		if (!callerSignal) return;
 		if (callerSignal.aborted) {
 			this.controller.abort();

@@ -145,8 +145,6 @@ export class Subagent {
 	readonly id: string;
 	readonly type: SubagentType;
 	readonly description: string;
-	/** The spawn's resolved mode, which the initial run takes. */
-	private readonly spawnedInBackground: boolean;
 
 	// Lifecycle status and metrics — owned by a private value object; getters and
 	// mutation methods below delegate to it one line.
@@ -182,19 +180,22 @@ export class Subagent {
 	isRunning(): boolean { return this.state.isRunning(); }
 	canBeSteered(): boolean { return this.state.canBeSteered(); }
 
-	/** The run in flight, or the last one to end; undefined until the first run starts. */
-	private currentRun?: SubagentRun;
+	/**
+	 * The run in flight, or the last one to end. The initial run is born with the
+	 * agent, so a queued agent already has the run it is waiting to start.
+	 */
+	private currentRun: SubagentRun;
 
 	/**
 	 * Whether this agent's current run is in the background: the run in flight,
-	 * or the last one to end, and the spawn's mode before the first run starts.
+	 * or the last one to end. The initial run takes the spawn's mode.
 	 *
 	 * Mode is a fact about a run, not the agent, so a resume can change it. The
 	 * record answers rather than a consumer re-deriving it from a per-call
 	 * display snapshot only the tool door ever built (#724).
 	 */
 	get isBackground(): boolean {
-		return this.currentRun?.inBackground ?? this.spawnedInBackground;
+		return this.currentRun.inBackground;
 	}
 
 	private _promise?: Promise<void>;
@@ -342,7 +343,7 @@ export class Subagent {
 		this.id = init.id;
 		this.type = init.type;
 		this.description = init.description;
-		this.spawnedInBackground = init.isBackground;
+		this.currentRun = new SubagentRun("initial", init.isBackground);
 
 		// Lifecycle status and metrics — fresh queued state unless one is supplied
 		this.state = init.state ?? new SubagentState();
@@ -366,8 +367,8 @@ export class Subagent {
 	 * captured internally).
 	 */
 	async run(): Promise<void> {
-		const run = new SubagentRun("initial", this.spawnedInBackground, this.execution.signal, () => this.abort());
-		this.currentRun = run;
+		const run = this.currentRun;
+		run.start(this.execution.signal, () => this.abort());
 		this.markRunning(Date.now());
 		this.execution.observer?.onRunStarted?.(this, run.kind);
 		// Cancelled before it started: end here, before the workspace and the child
@@ -568,8 +569,9 @@ export class Subagent {
 	private async continueSession(session: SubagentSession, prompt: string, options: ResumeRunOptions): Promise<void> {
 		// After resetForResume, which releases the previous run's handles.
 		this.resetForResume(Date.now());
-		const run = new SubagentRun("resume", options.background, options.signal, () => this.abort());
+		const run = new SubagentRun("resume", options.background);
 		this.currentRun = run;
+		run.start(options.signal, () => this.abort());
 		// Cancelled before it started: the turn loop takes no turn on a fired lever,
 		// so the resume ends like one aborted mid-run.
 		if (run.aborted) this.abort();
@@ -661,7 +663,7 @@ export class Subagent {
 	 */
 	abort(): boolean {
 		if (!this.isRunning()) return false;
-		this.currentRun?.abort();
+		this.currentRun.abort();
 		this.markStopped();
 		return true;
 	}
@@ -688,7 +690,7 @@ export class Subagent {
 	/** Reset for resume: running status, new startedAt, clear completedAt/result/error/consumedAt; release the previous run. */
 	resetForResume(startedAt: number): void {
 		this.state.resetForResume(startedAt);
-		this.currentRun?.release();
+		this.currentRun.release();
 	}
 
 	/** Complete a run: release its handles, dispose or hold the workspace, status transition, notify observer. */
