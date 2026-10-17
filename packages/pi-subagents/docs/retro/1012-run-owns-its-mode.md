@@ -67,3 +67,61 @@ The plan's marker is `**Release:** ship independently`, and the breaking `fix(pi
 ### Observations
 
 The Tidy-First deferral (`resumeExisting`'s `signal ?? new AbortController().signal` fallback) is unchanged and unfiled by design.
+
+## Stage: Final Retrospective (2026-10-17T02:49:05Z)
+
+### Session summary
+
+The root session fast-forward-merged the 17-commit `issue-1012-*` branch, re-ran lint and `fallow dead-code` on the merged tree, pushed, and watched CI pass.
+It closed #1012 with a comment anchored on the breaking `fix(pi-subagents)!:` commit, released `pi-subagents-v24.0.0`, and tore down the worktree.
+The ship ran without a stop or a retry; this retro reads the peer's planning, TDD, and sync transcript alongside it.
+
+### Observations
+
+#### What went well
+
+- The planning spike against the real `AgentWidget` found a sibling defect (`finishedTurnAge` never reset, so a resumed run's finished row did not linger) and measured it before the gate.
+  It was folded in as its own `fix:` step instead of becoming a follow-up issue.
+- The `clarification-gates` rule for a question-in-place-of-a-selection worked as written.
+  The operator answered the first gate with "the run becomes prominent; agree?"; the agent answered in a visible message, ended the turn, and re-asked only once the reply stopped asking.
+- Step 4's temporary `= {}` default on `Subagent.resume`'s options parameter meant the 34 calls that pass no signal were edited once, at step 6, instead of twice.
+- Step 6 drove its 78 mechanical call-site edits from `tsc`'s error list with a line-targeted script, then caught the untyped exact assertions with the full suite, as the plan predicted.
+- Every TDD step applied its named killing mutations against a `/tmp` copy of the green source and confirmed the restore with `cmp`.
+
+#### What caused friction (agent side)
+
+- `missing-context` — the first planning gate recommended keeping `SubagentRecord.isBackground` as the spawn-time fact, though `docs/architecture/architecture.md`'s "A subagent is a sequence of runs" section already says the mode is a fact about the run.
+  The operator pushed back with a question, and the agent then agreed, citing that same section.
+  Impact: one extra gate round; no rework, since the plan was not yet written.
+- `premature-convergence` — at TDD step 7 the agent dropped the plan's `finally { stopStream() }` around `await record.promise`, reasoning that `Subagent.promise` always resolves.
+  The round-1 `pre-completion-reviewer` traced a residual (an observer subscription or an observer throw outside `runOnSession`'s `try`) where it would not.
+  Impact: one follow-up `refactor:` commit restoring the `finally`; reviewer-caught.
+- `other` (degraded emission) — the step-6 widget doc edit came out as two malformed `Edit` calls (`oldText: "   * Background agents only \ttt"`, `newText: "x"`), then a third that landed but dropped "in the widget" from the plan's Outcome wording, leaving "shows whatever mode it was spawned in".
+  The agent did not re-read the landed comment; the round-1 reviewer flagged it as garbled.
+  Impact: one follow-up `refactor:` commit, and the wording fed round 2.
+- `other` (reviewer churn) — round 1 suggested "shows in the widget whatever mode it was spawned in", the agent applied it verbatim, and round 2 called that same wording wrong and asked for "regardless of the mode it was spawned in".
+  Impact: a third review round plus one `refactor:` and one `docs:` commit for a wording change.
+- `instruction-violation` (gate-caught) — planning ran `cd packages/pi-subagents && grep …`, which the permission deny rule rejected.
+  Impact: one retried call.
+- `instruction-violation` (self-identified via lint) — the plan defined `[#1012]:` for the doc's own issue number, which `markdown-conventions` says not to do; `rumdl` rejected it twice before the scripted fix.
+  Impact: two extra lint calls.
+- `instruction-violation` (self-identified) — this retro first attributed the subagents' models with `grep` over their `.jsonl` files, where the `/retro` prompt asks for `read_session_file`.
+  Impact: none; the reviewer transcripts read through `read_session_file` agree (`claude-sonnet-5-5`).
+
+#### What caused friction (user side)
+
+- Nothing to change.
+  The operator's question at the first gate was the right intervention: it redirected the design without a correction.
+
+### Diagnostic details
+
+- **Model-performance correlation** — planning and TDD ran on `anthropic/claude-opus-5-5` (thinking high), the sync stage on `anthropic/claude-sonnet-5-5`.
+  The `tidy-first-assessor` and all three `pre-completion-reviewer` rounds ran on `claude-sonnet-5-5`.
+  The assessor miscounted the signal-passing `agent.resume` calls (1, not 3), and the round-1 reviewer proposed wording that round 2 rejected; both are judgment-light slips that the parent's verification or the next round caught.
+  No mismatch worth changing.
+- **Feedback-loop gap analysis** — each TDD step ran its targeted Vitest files, its mutations, and `check` before committing, and step 6 ran the full package suite.
+  The sync stage did not re-run checks after its rebase; `/ship` ran lint and `fallow dead-code` on the merged tree, which is the designed split.
+
+### Changes made
+
+1. `.pi/skills/edit-tool/SKILL.md` gained a rule after the non-ASCII `oldText` rule: a malformed `Edit` call marks a degraded-emission run, so re-read the region the next successful `Edit` lands.
