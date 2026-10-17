@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [25.0.0](https://github.com/gotgenes/pi-packages/compare/pi-subagents-v24.0.1...pi-subagents-v25.0.0) (2026-10-17)
+
+
+### Bug Fixes
+
+* **pi-subagents:** **breaking:** refuse a second resume while one waits for a concurrency slot ([9cd6ef6](https://github.com/gotgenes/pi-packages/commit/9cd6ef694d8241745af1fbe63d74ee68907215f8)), closes [#1013](https://github.com/gotgenes/pi-packages/issues/1013)
+* **pi-subagents:** admit a background resume through maxConcurrent ([b62c410](https://github.com/gotgenes/pi-packages/commit/b62c410498ee1526e52b0bb119f675b5e9435fe4)), closes [#1013](https://github.com/gotgenes/pi-packages/issues/1013)
+
+### Documentation
+
+* **pi-subagents:** document resume admission through maxConcurrent ([735ff66](https://github.com/gotgenes/pi-packages/commit/735ff6608222fae2a3321456a1074275bfdff083))
+
 ## [24.0.1](https://github.com/gotgenes/pi-packages/compare/pi-subagents-v24.0.0...pi-subagents-v24.0.1) (2026-10-17)
 
 
