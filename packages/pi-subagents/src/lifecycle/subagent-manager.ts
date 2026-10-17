@@ -21,7 +21,6 @@ import {
 } from "#src/lifecycle/subagent";
 import type { RunKind } from "#src/lifecycle/subagent-run";
 import type { SubagentSession } from "#src/lifecycle/subagent-session";
-import { SubagentState } from "#src/lifecycle/subagent-state";
 import type { WorkspaceProvider } from "#src/lifecycle/workspace";
 
 import type { RunConfig } from "#src/runtime";
@@ -361,10 +360,6 @@ export class SubagentManager {
       type,
       description: options.description,
       isBackground,
-      state: new SubagentState({
-        status: isBackground ? "queued" : "running",
-        startedAt: Date.now(),
-      }),
       execution: {
         createSubagentSession: this.createSubagentSession,
         snapshot,
