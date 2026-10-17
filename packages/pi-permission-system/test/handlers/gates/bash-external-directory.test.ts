@@ -1,4 +1,4 @@
-import { homedir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import type { AccessIntent } from "#src/access-intent/access-intent";
@@ -192,11 +192,73 @@ describe("describeBashExternalDirectoryGate", () => {
     const intent = resolver.resolve.mock.calls[0][0];
     const path = intent.kind === "access-path" ? intent.path : undefined;
     expect(path).toBeDefined();
+    // `/outside` names nothing on disk, so the ask also carries the license.
     expect(result.promptDetails.accessIntent).toEqual({
       surface: "external_directory_read",
       matchValues: path?.matchValues(),
       boundaryValue: path?.boundaryValue(),
+      delegationLicense: "nothing-on-disk",
     });
+  });
+
+  describe("the nothing-on-disk delegation license (ADR 0007 §8)", () => {
+    // A distinctive top-level name, absent on any host, so the answer does not
+    // depend on whether the machine happens to have `/outside`.
+    const ABSENT_AT_ROOT = "/pi-permission-882-absent";
+
+    async function licenseOf(command: string): Promise<string | undefined> {
+      const result = (await describeGate(
+        makeTcc({ input: { command } }),
+        makeResolver(makeCheckResult("ask")),
+      )) as GateDescriptor;
+      expect(isGateDescriptor(result)).toBe(true);
+      return result.promptDetails.accessIntent?.delegationLicense;
+    }
+
+    it("licenses an undeclared tool's operand that names nothing on disk", async () => {
+      expect(
+        await licenseOf(`officecli set data.xlsx ${ABSENT_AT_ROOT}/Sheet1/B1`),
+      ).toBe("nothing-on-disk");
+    });
+
+    it("withholds it when another flagged path sits under an existing directory", async () => {
+      expect(
+        await licenseOf(
+          `officecli set ${ABSENT_AT_ROOT}/Sheet1/B1 ${join(tmpdir(), "pi-permission-882-absent", "x")}`,
+        ),
+      ).toBeUndefined();
+    });
+
+    it("withholds it from a proven write", async () => {
+      expect(await licenseOf(`echo x > ${ABSENT_AT_ROOT}/f`)).toBeUndefined();
+    });
+
+    it("withholds it from a relative path a non-literal cd left unlocated", async () => {
+      // From the session cwd `/test/project` the token would resolve to
+      // `/pi-permission-882-absent/x`, but after `cd "$D"` it could land under
+      // any existing directory, so the guess licenses nothing.
+      expect(
+        await licenseOf('cd "$D" && cat ../../pi-permission-882-absent/x'),
+      ).toBeUndefined();
+    });
+
+    it.each([
+      [
+        "located first",
+        'cd "$D" && cat /pi-permission-882-absent/x ../../pi-permission-882-absent/x',
+      ],
+      [
+        "unlocated first",
+        'cd "$D" && cat ../../pi-permission-882-absent/x /pi-permission-882-absent/x',
+      ],
+    ])(
+      "keeps a merged path unlocated when any of its tokens was (%s)",
+      async (_order, command) => {
+        // Both tokens resolve to one entry; the absolute one is located, the
+        // relative one is not, and the merge must not forget either.
+        expect(await licenseOf(command)).toBeUndefined();
+      },
+    );
   });
 
   it("emits a bash_external_directory payload listing every escaping path", async () => {

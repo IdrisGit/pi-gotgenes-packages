@@ -4,7 +4,10 @@ import type { ScopedPermissionResolver } from "#src/policy/permission-resolver";
 import { buildBashExternalDirectoryAskPayload } from "#src/presentation/path-ask-payload";
 import { SessionApproval } from "#src/session/session-approval";
 import type { GateResult } from "./descriptor";
-import { selectUncoveredExternalPaths } from "./external-directory-policy";
+import {
+  selectUncoveredExternalPaths,
+  type UncoveredExternalPath,
+} from "./external-directory-policy";
 import { accessFactsFromPath } from "./helpers";
 import type { ToolCallContext } from "./types";
 
@@ -131,7 +134,12 @@ export function describeBashExternalDirectoryGate(
       toolCallId: tcc.toolCallId,
       toolName: tcc.toolName,
       command,
-      accessIntent: accessFactsFromPath(surface, worstEntry.path),
+      accessIntent: {
+        ...accessFactsFromPath(surface, worstEntry.path),
+        ...(namesNothingOnDisk(uncoveredEntries, normalizer)
+          ? { delegationLicense: "nothing-on-disk" as const }
+          : {}),
+      },
     },
     logContext: {
       source: "tool_call",
@@ -147,4 +155,23 @@ export function describeBashExternalDirectoryGate(
     },
     preCheck,
   };
+}
+
+/**
+ * Whether every uncovered path earns the nothing-on-disk delegation license
+ * (ADR 0007, amendment 8): located against a known working directory, not a
+ * proven write, and naming nothing on disk below the filesystem root. One path
+ * that fails withholds it from the whole ask, since a link's verdict covers
+ * the whole command.
+ */
+function namesNothingOnDisk(
+  entries: readonly UncoveredExternalPath[],
+  normalizer: PathNormalizer,
+): boolean {
+  return entries.every(
+    ({ path, effect, baseUnknown }) =>
+      baseUnknown === undefined &&
+      effect.effect !== "write" &&
+      normalizer.namesNothingBelowRoot(path),
+  );
 }

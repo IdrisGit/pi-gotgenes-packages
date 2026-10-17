@@ -14,6 +14,8 @@ export interface UncoveredExternalPath {
   /** What the effect was, and what established it — the review log's blame. */
   effect: TokenEffect;
   check: PermissionCheckResult;
+  /** Carried from {@link BashExternalPath.baseUnknown}: `path` is a display guess. */
+  baseUnknown?: true;
 }
 
 /**
@@ -79,7 +81,7 @@ export function selectUncoveredExternalPaths(
 ): ExternalPathCoverage {
   const uncovered: UncoveredExternalPath[] = [];
   const sessionCovered: AccessPath[] = [];
-  for (const { path, effect } of accesses) {
+  for (const { path, effect, baseUnknown } of accesses) {
     const surface = capabilitySurfaceForEffect(
       "external_directory",
       effect.effect,
@@ -91,7 +93,13 @@ export function selectUncoveredExternalPaths(
       agentName,
     );
     if (check.state !== "allow") {
-      uncovered.push({ path, surface, effect, check });
+      uncovered.push({
+        path,
+        surface,
+        effect,
+        check,
+        ...(baseUnknown ? { baseUnknown } : {}),
+      });
     } else if (check.source === "session") {
       sessionCovered.push(path);
     }

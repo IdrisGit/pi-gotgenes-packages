@@ -83,6 +83,13 @@ export interface BashPathRuleCandidate {
 export interface BashExternalPath {
   readonly path: AccessPath;
   readonly effect: TokenEffect;
+  /**
+   * Present when the token was relative to a working directory the parse could
+   * not determine (after a non-literal `cd`). `path` is then resolved against
+   * the session cwd for display and matching only; it does not say where the
+   * command reaches, so no filesystem fact may be read from it.
+   */
+  readonly baseUnknown?: true;
 }
 
 /**
@@ -587,7 +594,9 @@ export class BashPathResolver {
         const accessPath = this.normalizer.forPath(candidate);
         const canonical = accessPath.boundaryValue();
         if (canonical && !isSafeSystemPath(canonical)) {
-          recordExternal(accessPath, effect, canonical, seen, externalPaths);
+          recordExternal(accessPath, effect, canonical, seen, externalPaths, {
+            baseUnknown: true,
+          });
         }
         continue;
       }
@@ -875,17 +884,22 @@ function recordExternal(
   dedupKey: string,
   seen: Map<string, number>,
   out: BashExternalPath[],
+  location: { baseUnknown?: true } = {},
 ): void {
   const index = seen.get(dedupKey);
   if (index === undefined) {
     seen.set(dedupKey, out.length);
-    out.push({ path: accessPath, effect });
+    out.push({ path: accessPath, effect, ...location });
     return;
   }
+  // A path any of its tokens reached from an unknown base stays unknown: the
+  // merged entry must not read as located because another token was.
   const existing = out[index];
+  const baseUnknown = existing.baseUnknown ?? location.baseUnknown;
   out[index] = {
     path: existing.path,
     effect: mergeTokenEffects(existing.effect, effect),
+    ...(baseUnknown ? { baseUnknown } : {}),
   };
 }
 
