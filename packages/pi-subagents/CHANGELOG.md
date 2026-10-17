@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [24.0.1](https://github.com/gotgenes/pi-packages/compare/pi-subagents-v24.0.0...pi-subagents-v24.0.1) (2026-10-17)
+
+
+### Bug Fixes
+
+* **pi-subagents:** keep a stopped run's late result off the resume that replaced it ([7307cae](https://github.com/gotgenes/pi-packages/commit/7307caeda14df5608201ad61a956d87ff8dbbd7c)), closes [#1051](https://github.com/gotgenes/pi-packages/issues/1051)
+
 ## [24.0.0](https://github.com/gotgenes/pi-packages/compare/pi-subagents-v23.4.2...pi-subagents-v24.0.0) (2026-10-17)
 
 
