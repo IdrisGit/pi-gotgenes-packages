@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [24.0.0](https://github.com/gotgenes/pi-packages/compare/pi-subagents-v23.4.2...pi-subagents-v24.0.0) (2026-10-17)
+
+
+### Features
+
+* **pi-subagents:** stream a foreground resume's progress inline ([#1012](https://github.com/gotgenes/pi-packages/issues/1012)) ([fdf1fab](https://github.com/gotgenes/pi-packages/commit/fdf1fab37df1560b570ee9f2148d185e2b42fc73))
+
+### Bug Fixes
+
+* **pi-subagents:** let a resumed run's finished widget row linger like the first run's ([#1012](https://github.com/gotgenes/pi-packages/issues/1012)) ([ccf9fc8](https://github.com/gotgenes/pi-packages/commit/ccf9fc873eb74125c38d9a88a789e4df270c330e))
+* **pi-subagents:** **breaking:** report the current run's mode, so a background resume shows a widget row ([7dafb7c](https://github.com/gotgenes/pi-packages/commit/7dafb7c2e44340b7deb3d4fca65e400611da0423)), closes [#1012](https://github.com/gotgenes/pi-packages/issues/1012)
+
+### Documentation
+
+* **pi-subagents:** describe isBackground as the current run's mode ([#1012](https://github.com/gotgenes/pi-packages/issues/1012)) ([d29d091](https://github.com/gotgenes/pi-packages/commit/d29d091854fc4425bdbf3dccead08ef8c4ed9ff0))
+* **pi-subagents:** say a background resume shows regardless of its spawn mode ([#1012](https://github.com/gotgenes/pi-packages/issues/1012)) ([f207f46](https://github.com/gotgenes/pi-packages/commit/f207f46449feca63aaf5840912951769d700a4a8))
+
 ## [23.4.2](https://github.com/gotgenes/pi-packages/compare/pi-subagents-v23.4.1...pi-subagents-v23.4.2) (2026-10-16)
 
 
