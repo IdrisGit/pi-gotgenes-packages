@@ -41,3 +41,26 @@ The last three steps cover the queued launch message, the manager admission `fix
 #### Deferred tidyings
 
 - `src/lifecycle/subagent.ts` `guardedRun`: the assessor rejected unifying it with the run-scoped resume guard; they guard different things.
+
+## Stage: Implementation — TDD (2026-10-17T23:14:46Z)
+
+### Session summary
+
+I implemented all eight plan steps, one commit each, and applied every named killing mutation.
+A background resume, from the tool or `SubagentsService.resume()`, now waits for a concurrency slot like a background spawn.
+A queued resume refuses another resume with `resume-queued` (the breaking `fix!:`), and a stopped queued resume ends on the resume path.
+The pi-subagents suite went from 2155 to 2173 tests (+18).
+
+### Observations
+
+- Deviation, step 3: test (d) ("runs only the resume that replaced a stopped one") as first written survived the "guard on `this.isActive()`" mutation.
+  It opened the stale resume's slot only after the second resume had settled, when the record was inactive anyway.
+  I rewrote it to open the slot while the second resume's turn loop is still pending, and the mutation then failed with a crisp assertion rather than a timeout.
+  Lesson for planning: a guard whose two candidate readings differ only while another run is live needs a test that opens the slot during that run.
+- Step 3's "ignore `schedule`" mutation killed all four admission tests, not only (a), because each depends on the run being held.
+- Step 7's foreground-at-capacity test and step 5's "names no resume call for any reason" (extended with `resume-queued`) stayed green during Red as intended pins; their mutations ("always admit" and the affordance branch) killed them.
+- The manager's `arrangeResumeAtCapacity` helper waits for the holder to read `running`, because the agent's previous slot frees a microtask after its promise resolves (the `.finally` the plan flagged).
+- An ESLint pre-commit auto-fix removed a `!` on `stubs[0]` in the step 7 test, rejecting the first commit attempt; I re-staged and committed.
+- `verify:public-types` passes; `dist/public.d.ts` carries `resume-queued`.
+- Pre-completion reviewer: PASS.
+  It re-derived the four invariants from its own inputs: synchronous start, no stale run, no second resume while queued, and every exhaustive reader updated.
