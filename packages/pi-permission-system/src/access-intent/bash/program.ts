@@ -116,7 +116,7 @@ export class BashProgram {
             words,
             options?.workdir,
             options?.commandEffects,
-          ).resolve(tree.rootNode, salvaged);
+          ).resolve(tree.rootNode, salvaged, command);
         return new BashProgram(
           command,
           [

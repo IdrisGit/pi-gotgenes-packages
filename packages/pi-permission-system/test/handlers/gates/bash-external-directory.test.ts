@@ -306,6 +306,27 @@ describe("describeBashExternalDirectoryGate", () => {
       },
     );
 
+    it.each([
+      ["a carriage return", "cat /e\rtc/passwd"],
+      ["a form feed", "cat /pi-permission-882-e\ftc/passwd"],
+      ["a vertical tab", "cat /pi-permission-882-e\vtc/passwd"],
+    ])(
+      "withholds it from a token the grammar split where bash does not (%s)",
+      async (_, command) => {
+        // tree-sitter-bash treats these as whitespace; bash splits words only
+        // on a space, a tab, or a newline, so the word it runs is longer.
+        expect(await licenseOf(command)).toBeUndefined();
+      },
+    );
+
+    it("still licenses a whole word bounded by a tab", async () => {
+      expect(
+        await licenseOf(
+          "officecli set data.xlsx\t/pi-permission-882-absent/B1",
+        ),
+      ).toBe("nothing-on-disk");
+    });
+
     it("withholds it from a value read out of part of an argument", async () => {
       // `--file=` and the path share one word; the token has no span of its own
       // to bound, so it cannot be shown to stand alone.

@@ -183,10 +183,15 @@ export class BashPathResolver {
    * candidates, keyed by the source span of a whole-argument token. A salvaged
    * fragment's tokens carry no span, because its indices are its own re-parse's
    * and would collide with the primary tree's.
+   *
+   * `source` is the whole command the primary tree was parsed from, not the
+   * root node's text, which drops trailing whitespace a word boundary may sit
+   * on; spans index into it.
    */
   resolve(
     rootNode: TSNode,
-    salvagedRoots: readonly TSNode[] = [],
+    salvagedRoots: readonly TSNode[],
+    source: string,
   ): ResolvedBashPaths {
     const initialBase =
       this.workdir === undefined
@@ -205,7 +210,7 @@ export class BashPathResolver {
       this.projectRuleCandidates(candidates);
     return {
       externalAccesses: this.withWorkdirExternal(
-        this.projectExternalPaths(candidates, new SourceText(rootNode)),
+        this.projectExternalPaths(candidates, new SourceText(source)),
       ),
       ruleCandidates,
       argumentSpellings,
@@ -889,13 +894,7 @@ function isVerbatimAbsolute(token: string): boolean {
  * token is a whole word as bash splits it.
  */
 class SourceText {
-  private readonly text: string;
-  private readonly offset: number;
-
-  constructor(rootNode: TSNode) {
-    this.text = rootNode.text;
-    this.offset = rootNode.startIndex;
-  }
+  constructor(private readonly text: string) {}
 
   /**
    * Whether `span` covers a whole word: bounded on both sides by the start or
@@ -904,9 +903,7 @@ class SourceText {
    */
   standsAlone(span: SourceSpan | undefined): boolean {
     if (span === undefined) return false;
-    const start = span.start - this.offset;
-    const end = span.end - this.offset;
-    return this.endsWordAt(start - 1) && this.endsWordAt(end);
+    return this.endsWordAt(span.start - 1) && this.endsWordAt(span.end);
   }
 
   /**
@@ -929,8 +926,12 @@ class SourceText {
   }
 }
 
-/** Characters bash ends a word on: whitespace and the control and redirection operators. */
-const WORD_BOUNDARY = /[\s;&|<>]/;
+/**
+ * Characters bash ends a word on: its blanks (space and tab), a newline, and
+ * the control and redirection operators. Not JS `\s`: tree-sitter-bash also
+ * splits on a carriage return, form feed, or vertical tab, where bash does not.
+ */
+const WORD_BOUNDARY = /[ \t\n;&|<>]/;
 
 /** The key an argument spelling is filed under: its node's source span. */
 function spanKey({ start, end }: SourceSpan): string {
