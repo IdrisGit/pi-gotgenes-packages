@@ -103,6 +103,12 @@ export interface SubagentExecution {
 	signal?: AbortSignal;
 }
 
+/**
+ * Runs a run's thunk, now or once admitted; a concurrency limiter's `schedule`
+ * is one. The returned promise settles with the thunk.
+ */
+export type RunScheduler = (thunk: () => Promise<void>) => Promise<void>;
+
 /** What one resume of a subagent is started with. */
 export interface ResumeRunOptions {
 	/**
@@ -500,7 +506,7 @@ export class Subagent {
 	 * The guard in guardedRun() makes an abort-while-queued run a no-op when the
 	 * slot finally frees.
 	 */
-	scheduleVia(schedule: (thunk: () => Promise<void>) => Promise<void>): void {
+	scheduleVia(schedule: RunScheduler): void {
 		this._promise = schedule(() => this.guardedRun());
 	}
 
@@ -552,8 +558,12 @@ export class Subagent {
 	 * one. A caller's `signal` is wired to abort() rather than forwarded to the
 	 * turn loop, so both levers stop the same run and both leave the record
 	 * reading `stopped`.
+	 *
+	 * The resume's run is born at once, queued; `schedule` decides when it starts.
+	 * The default starts it now. A concurrency limiter may hold it until a slot
+	 * frees, and a run stopped while it waits never starts.
 	 */
-	resume(prompt: string, options: ResumeRunOptions): Promise<void> {
+	resume(prompt: string, options: ResumeRunOptions, schedule: RunScheduler = (thunk) => thunk()): Promise<void> {
 		const subagentSession = this.subagentSession;
 		if (!subagentSession) {
 			// Rejection, not a throw: this method is not async, and a synchronous
@@ -562,7 +572,11 @@ export class Subagent {
 		}
 
 		const run = this.beginResume(options);
-		this._promise = this.startResumedRun(run, subagentSession, prompt, options.signal);
+		// Checked on the run, not the record: a run stopped while it waited leaves
+		// the record resumable, and a later resume may already have replaced it.
+		this._promise = schedule(() =>
+			run.isActive() ? this.startResumedRun(run, subagentSession, prompt, options.signal) : Promise.resolve(),
+		);
 		return this._promise;
 	}
 

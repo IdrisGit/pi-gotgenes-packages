@@ -2003,6 +2003,75 @@ describe("Subagent", () => {
 			});
 		});
 
+		describe("admission", () => {
+			it("waits as the resume's own queued run until admitted", async () => {
+				const started: RunKind[] = [];
+				const { agent, stub } = createResumableAgent({
+					isBackground: false,
+					observer: { onRunStarted: (_agent, kind) => { started.push(kind); } },
+				});
+				stub.runTurnLoop.mockResolvedValue(turnLoopResult({ responseText: "second" }));
+				const { schedule, openSlot } = gatedScheduler();
+
+				void agent.resume("continue", { background: true }, schedule);
+
+				expect([agent.status, agent.isBackground]).toEqual(["queued", true]);
+				expect(agent.promise).toBeInstanceOf(Promise);
+				expect(stub.runTurnLoop).not.toHaveBeenCalled();
+				expect(started).toEqual([]);
+
+				openSlot();
+				await agent.promise;
+
+				expect([agent.status, agent.result]).toEqual(["completed", "second"]);
+				expect(stub.runTurnLoop).toHaveBeenCalledExactlyOnceWith("continue", expect.anything());
+				expect(started).toEqual(["resume"]);
+			});
+
+			it("is born claimed while it waits, when the caller claims it", async () => {
+				const { agent } = createResumableAgent();
+				const { schedule, openSlot } = gatedScheduler();
+
+				void agent.resume("continue", { background: true, claimOutcome: true }, schedule);
+
+				expect([agent.status, agent.claimed]).toEqual(["queued", true]);
+				openSlot();
+				await agent.promise;
+			});
+
+			it("never runs a resume stopped before its slot opened", async () => {
+				const { agent, stub } = createResumableAgent();
+				const { schedule, openSlot } = gatedScheduler();
+				void agent.resume("continue", { background: true }, schedule);
+
+				agent.stopQueued();
+				openSlot();
+				await agent.promise;
+
+				expect(stub.runTurnLoop).not.toHaveBeenCalled();
+				expect(agent.status).toBe("stopped");
+			});
+
+			it("runs only the resume that replaced a stopped one", async () => {
+				const { agent, stub } = createResumableAgent();
+				const secondLoop = Promise.withResolvers<TurnLoopResult>();
+				stub.runTurnLoop.mockReturnValue(secondLoop.promise);
+				const first = gatedScheduler();
+				const firstQueued = agent.resume("first answer", { background: true }, first.schedule);
+				agent.stopQueued();
+
+				// The first resume's slot opens while the second is still running, so the
+				// record is active again when the stale thunk is admitted.
+				const second = agent.resume("second answer", { background: true });
+				first.openSlot();
+				secondLoop.resolve(turnLoopResult({ responseText: "second answer done" }));
+				await Promise.all([firstQueued, second]);
+
+				expect(stub.runTurnLoop).toHaveBeenCalledExactlyOnceWith("second answer", expect.anything());
+				expect([agent.status, agent.result]).toEqual(["completed", "second answer done"]);
+			});
+		});
+
 		describe("disposing a held workspace", () => {
 			it("disposes when the resumed child answers without asking again", async () => {
 				const { agent, workspace, stub } = await heldWorkspaceAgent();
