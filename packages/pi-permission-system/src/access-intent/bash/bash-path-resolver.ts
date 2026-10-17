@@ -916,6 +916,9 @@ class SourceText {
   private endsWordAt(index: number): boolean {
     if (index < 0 || index >= this.text.length) return true;
     const character = this.text.charAt(index);
+    // An escaped boundary is part of the word: bash keeps `a\<tab>/x` whole
+    // where tree-sitter-bash splits it.
+    if (this.text.charAt(index - 1) === "\\") return false;
     if (
       (character === "<" || character === ">") &&
       this.text.charAt(index + 1) === "("

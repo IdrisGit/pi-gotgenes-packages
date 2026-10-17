@@ -319,6 +319,12 @@ describe("describeBashExternalDirectoryGate", () => {
       },
     );
 
+    it("withholds it from a token after a backslash-escaped tab, which bash keeps in the word", async () => {
+      expect(
+        await licenseOf("cat a\\\t/pi-permission-882-absent/x"),
+      ).toBeUndefined();
+    });
+
     it("still licenses a whole word bounded by a tab", async () => {
       expect(
         await licenseOf(
