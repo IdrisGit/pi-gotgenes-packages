@@ -14,6 +14,13 @@
  * ended with whatever ran after it.
  */
 
+import {
+	isActiveStatus,
+	isRunningStatus,
+	isTerminalErrorStatus,
+	type SubagentStatus,
+} from "#src/lifecycle/subagent-state";
+
 /** Which run of a subagent this is: the one that created its session, or a resume of it. */
 export type RunKind = "initial" | "resume";
 
@@ -27,6 +34,13 @@ export interface CarrierClaim {
 
 /** Seeds for a run's outcome, for a record built in a known state (test fixtures). */
 export interface RunOutcomeInit {
+	status?: SubagentStatus;
+	result?: string;
+	error?: string;
+	/** Whether the run was stopped before the limiter ever admitted it. */
+	stoppedWhileQueued?: boolean;
+	startedAt?: number;
+	completedAt?: number;
 	/** Time the parent collected the outcome; undefined = obligation still open. */
 	consumedAt?: number;
 }
@@ -36,6 +50,27 @@ export class SubagentRun {
 	private readonly controller = new AbortController();
 	private detachCallerSignal?: () => void;
 	private unsubscribeObserver?: () => void;
+
+	// The run's transition state, mutated only through the transitions below.
+	private _status: SubagentStatus;
+	get status(): SubagentStatus { return this._status; }
+
+	private _result?: string;
+	get result(): string | undefined { return this._result; }
+
+	private _error?: string;
+	get error(): string | undefined { return this._error; }
+
+	// Never-started marker: a queued run stopped before its slot opened has no
+	// result, as distinct from a started run that produced none.
+	private _stoppedWhileQueued: boolean;
+	get stoppedWhileQueued(): boolean { return this._stoppedWhileQueued; }
+
+	private _startedAt: number;
+	get startedAt(): number { return this._startedAt; }
+
+	private _completedAt?: number;
+	get completedAt(): number | undefined { return this._completedAt; }
 
 	// Result delivery — whether the parent has collected this run's outcome.
 	private _consumedAt?: number;
@@ -57,18 +92,26 @@ export class SubagentRun {
 		readonly inBackground: boolean,
 		init: RunOutcomeInit = {},
 	) {
+		this._status = init.status ?? "queued";
+		this._result = init.result;
+		this._error = init.error;
+		this._stoppedWhileQueued = init.stoppedWhileQueued ?? false;
+		this._startedAt = init.startedAt ?? Date.now();
+		this._completedAt = init.completedAt;
 		this._consumedAt = init.consumedAt;
 	}
 
 	/**
-	 * Start the run: wire the caller's signal, when there is one, so firing it
-	 * calls onCallerAbort.
+	 * Start the run: transition to running, and wire the caller's signal, when
+	 * there is one, so firing it calls onCallerAbort.
 	 *
 	 * A signal that has already fired never fires again, so a listener on it would
 	 * be dead on arrival: the run is aborted at its start instead. onCallerAbort is
 	 * not called for it — the owner reads `aborted` once the run has started.
 	 */
-	start(callerSignal: AbortSignal | undefined, onCallerAbort: () => void): void {
+	start(startedAt: number, callerSignal: AbortSignal | undefined, onCallerAbort: () => void): void {
+		this._status = "running";
+		this._startedAt = startedAt;
 		if (!callerSignal) return;
 		if (callerSignal.aborted) {
 			this.controller.abort();
@@ -90,6 +133,78 @@ export class SubagentRun {
 
 	abort(): void {
 		this.controller.abort();
+	}
+
+	/** Running or queued: still live. */
+	isActive(): boolean {
+		return isActiveStatus(this._status);
+	}
+
+	/** Terminated by error, harness turn-limit abort, or external stop. */
+	isTerminalError(): boolean {
+		return isTerminalErrorStatus(this._status);
+	}
+
+	/** Actively running (excludes queued). */
+	isRunning(): boolean {
+		return isRunningStatus(this._status);
+	}
+
+	/** Whether a steer message can be delivered: the run must be running. */
+	canBeSteered(): boolean {
+		return isRunningStatus(this._status);
+	}
+
+	/**
+	 * Transition to completed state.
+	 * Always sets result and completedAt (??=). Only changes status if not stopped.
+	 */
+	markCompleted(result: string, completedAt?: number): void {
+		this._result = result;
+		this._completedAt ??= completedAt ?? Date.now();
+		if (this._status !== "stopped") {
+			this._status = "completed";
+		}
+	}
+
+	/**
+	 * Transition to aborted state.
+	 * Always sets result and completedAt (??=). Only changes status if not stopped.
+	 */
+	markAborted(result: string, completedAt?: number): void {
+		this._result = result;
+		this._completedAt ??= completedAt ?? Date.now();
+		if (this._status !== "stopped") {
+			this._status = "aborted";
+		}
+	}
+
+	/**
+	 * Transition to error state.
+	 * Always sets error (formatted) and completedAt (??=). Only changes status if not stopped.
+	 */
+	markError(error: unknown, completedAt?: number): void {
+		this._error = error instanceof Error ? error.message : String(error);
+		this._completedAt ??= completedAt ?? Date.now();
+		if (this._status !== "stopped") {
+			this._status = "error";
+		}
+	}
+
+	/** Transition to stopped state. Always valid: no guard. */
+	markStopped(completedAt?: number): void {
+		this._status = "stopped";
+		this._completedAt = completedAt ?? Date.now();
+	}
+
+	/**
+	 * Stop a run that is still awaiting a concurrency slot. Records the
+	 * never-started fact only when the run is genuinely still queued, so a
+	 * mis-targeted call cannot claim it.
+	 */
+	stopQueued(completedAt?: number): void {
+		if (this._status === "queued") this._stoppedWhileQueued = true;
+		this.markStopped(completedAt);
 	}
 
 	/**

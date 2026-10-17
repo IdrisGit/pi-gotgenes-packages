@@ -19,19 +19,6 @@ const ALL_STATUSES: SubagentStatus[] = [
 ];
 
 describe("SubagentState — constructor", () => {
-	it("defaults status to 'queued'", () => {
-		const state = new SubagentState();
-		expect(state.status).toBe("queued");
-	});
-
-	it("defaults startedAt to Date.now() when not provided", () => {
-		const before = Date.now();
-		const state = new SubagentState();
-		const after = Date.now();
-		expect(state.startedAt).toBeGreaterThanOrEqual(before);
-		expect(state.startedAt).toBeLessThanOrEqual(after);
-	});
-
 	it("defaults numeric counters to zero", () => {
 		const state = new SubagentState();
 		expect(state.toolUses).toBe(0);
@@ -43,28 +30,6 @@ describe("SubagentState — constructor", () => {
 		const state = new SubagentState();
 		expect(state.responseText).toBe("");
 		expect(state.activeTools.size).toBe(0);
-	});
-
-	it("passes through optional transition fields", () => {
-		const state = new SubagentState({
-			status: "completed",
-			result: "done",
-			error: "oops",
-			startedAt: 1000,
-			completedAt: 2000,
-		});
-		expect(state.status).toBe("completed");
-		expect(state.result).toBe("done");
-		expect(state.error).toBe("oops");
-		expect(state.startedAt).toBe(1000);
-		expect(state.completedAt).toBe(2000);
-	});
-
-	it("leaves optional fields undefined when not provided", () => {
-		const state = new SubagentState();
-		expect(state.result).toBeUndefined();
-		expect(state.error).toBeUndefined();
-		expect(state.completedAt).toBeUndefined();
 	});
 });
 
@@ -105,163 +70,6 @@ describe("SubagentState — constructor full-value seeding", () => {
 	});
 });
 
-describe("SubagentState — markRunning", () => {
-	it("sets status to 'running' and updates startedAt", () => {
-		const state = new SubagentState({ status: "queued", startedAt: 1000 });
-		state.markRunning(2000);
-		expect(state.status).toBe("running");
-		expect(state.startedAt).toBe(2000);
-	});
-});
-
-describe("SubagentState — markCompleted", () => {
-	it("sets status, result, and completedAt", () => {
-		const state = new SubagentState({ status: "running" });
-		state.markCompleted("all done", 5000);
-		expect(state.status).toBe("completed");
-		expect(state.result).toBe("all done");
-		expect(state.completedAt).toBe(5000);
-	});
-
-	it("defaults completedAt to Date.now() when not provided", () => {
-		const state = new SubagentState({ status: "running" });
-		const before = Date.now();
-		state.markCompleted("done");
-		const after = Date.now();
-		expect(state.completedAt).toBeGreaterThanOrEqual(before);
-		expect(state.completedAt).toBeLessThanOrEqual(after);
-	});
-
-	it("preserves existing completedAt (??= semantics)", () => {
-		const state = new SubagentState({ status: "running", completedAt: 1000 });
-		state.markCompleted("done", 9999);
-		expect(state.completedAt).toBe(1000);
-	});
-
-	it("preserves status when already stopped, but still sets result and completedAt", () => {
-		const state = new SubagentState({ status: "stopped", completedAt: 1000 });
-		state.markCompleted("late result", 2000);
-		expect(state.status).toBe("stopped");
-		expect(state.result).toBe("late result");
-		expect(state.completedAt).toBe(1000);
-	});
-});
-
-describe("SubagentState — markAborted", () => {
-	it("sets status to 'aborted' with result and completedAt", () => {
-		const state = new SubagentState({ status: "running" });
-		state.markAborted("partial result", 3000);
-		expect(state.status).toBe("aborted");
-		expect(state.result).toBe("partial result");
-		expect(state.completedAt).toBe(3000);
-	});
-
-	it("preserves status when already stopped, but still sets result", () => {
-		const state = new SubagentState({ status: "stopped", completedAt: 500 });
-		state.markAborted("partial", 2000);
-		expect(state.status).toBe("stopped");
-		expect(state.result).toBe("partial");
-		expect(state.completedAt).toBe(500);
-	});
-});
-
-describe("SubagentState — markError", () => {
-	it("sets status to 'error' and formats Error objects to .message", () => {
-		const state = new SubagentState({ status: "running" });
-		state.markError(new Error("something broke"), 6000);
-		expect(state.status).toBe("error");
-		expect(state.error).toBe("something broke");
-		expect(state.completedAt).toBe(6000);
-	});
-
-	it("formats non-Error values with String()", () => {
-		const state = new SubagentState({ status: "running" });
-		state.markError(42, 6000);
-		expect(state.error).toBe("42");
-	});
-
-	it("preserves status when already stopped, but still sets error and completedAt", () => {
-		const state = new SubagentState({ status: "stopped", completedAt: 1000 });
-		state.markError(new Error("late error"), 2000);
-		expect(state.status).toBe("stopped");
-		expect(state.error).toBe("late error");
-		expect(state.completedAt).toBe(1000);
-	});
-
-	it("preserves existing completedAt (??= semantics)", () => {
-		const state = new SubagentState({ status: "running", completedAt: 1000 });
-		state.markError(new Error("err"), 9999);
-		expect(state.completedAt).toBe(1000);
-	});
-});
-
-describe("SubagentState — markStopped", () => {
-	it("sets status to 'stopped' and completedAt", () => {
-		const state = new SubagentState({ status: "running" });
-		state.markStopped(7000);
-		expect(state.status).toBe("stopped");
-		expect(state.completedAt).toBe(7000);
-	});
-
-	it("defaults completedAt to Date.now() when not provided", () => {
-		const state = new SubagentState({ status: "running" });
-		const before = Date.now();
-		state.markStopped();
-		const after = Date.now();
-		expect(state.completedAt).toBeGreaterThanOrEqual(before);
-		expect(state.completedAt).toBeLessThanOrEqual(after);
-	});
-
-	it("overwrites any previous status — no guard", () => {
-		const state = new SubagentState({ status: "completed" });
-		state.markStopped(8000);
-		expect(state.status).toBe("stopped");
-	});
-
-	it("leaves stoppedWhileQueued false — the agent had started", () => {
-		const state = new SubagentState({ status: "running" });
-		state.markStopped(8000);
-		expect(state.stoppedWhileQueued).toBe(false);
-	});
-});
-
-describe("SubagentState — stopQueued", () => {
-	it("sets status to 'stopped' and completedAt", () => {
-		const state = new SubagentState({ status: "queued" });
-		state.stopQueued(7000);
-		expect(state.status).toBe("stopped");
-		expect(state.completedAt).toBe(7000);
-	});
-
-	it("records that the agent never started", () => {
-		const state = new SubagentState({ status: "queued" });
-		expect(state.stoppedWhileQueued).toBe(false);
-		state.stopQueued(7000);
-		expect(state.stoppedWhileQueued).toBe(true);
-	});
-
-	it("defaults completedAt to Date.now() when not provided", () => {
-		const state = new SubagentState({ status: "queued" });
-		const before = Date.now();
-		state.stopQueued();
-		const after = Date.now();
-		expect(state.completedAt).toBeGreaterThanOrEqual(before);
-		expect(state.completedAt).toBeLessThanOrEqual(after);
-	});
-
-	it("stops an already-running agent without claiming it never started", () => {
-		const state = new SubagentState({ status: "running" });
-		state.stopQueued(7000);
-		expect(state.status).toBe("stopped");
-		expect(state.stoppedWhileQueued).toBe(false);
-	});
-
-	it("seeds stoppedWhileQueued from init", () => {
-		const state = new SubagentState({ status: "stopped", stoppedWhileQueued: true });
-		expect(state.stoppedWhileQueued).toBe(true);
-	});
-});
-
 describe("SubagentState — incrementToolUses", () => {
 	it("starts at 0 and increments by 1 each call", () => {
 		const state = new SubagentState();
@@ -295,32 +103,9 @@ describe("SubagentState — incrementCompactions", () => {
 	});
 });
 
-describe("SubagentState — resetForResume", () => {
-	it("sets status to 'running' and new startedAt", () => {
-		const state = new SubagentState({ status: "completed", startedAt: 1000 });
-		state.resetForResume(9000);
-		expect(state.status).toBe("running");
-		expect(state.startedAt).toBe(9000);
-	});
-
-	it("clears completedAt, result, and error", () => {
-		const state = new SubagentState({
-			status: "error",
-			result: "old result",
-			error: "old error",
-			completedAt: 5000,
-		});
-		state.resetForResume(9000);
-		expect(state.completedAt).toBeUndefined();
-		expect(state.result).toBeUndefined();
-		expect(state.error).toBeUndefined();
-	});
-});
-
 describe("SubagentState — turn budget", () => {
 	const WITHIN: TurnBudget = { maxTurns: 5, used: 1, phase: "within" };
 	const WARNED: TurnBudget = { maxTurns: 5, used: 3, phase: "warned" };
-	const EXHAUSTED: TurnBudget = { maxTurns: 5, used: 5, phase: "exhausted" };
 
 	it("has no budget until a run's turn loop reports one", () => {
 		expect(new SubagentState().turnBudget).toBeUndefined();
@@ -331,32 +116,16 @@ describe("SubagentState — turn budget", () => {
 	});
 
 	it("records each budget the running turn loop reports", () => {
-		const state = new SubagentState({ status: "running" });
+		const state = new SubagentState();
 		state.setTurnBudget(WITHIN);
 		expect(state.turnBudget).toEqual(WITHIN);
 		state.setTurnBudget(WARNED);
 		expect(state.turnBudget).toEqual(WARNED);
 	});
 
-	it("keeps the live budget through a terminal transition", () => {
-		const state = new SubagentState({ status: "running" });
-		state.setTurnBudget(EXHAUSTED);
-		state.markAborted("partial", 5000);
-		expect(state.turnBudget).toEqual(EXHAUSTED);
-	});
-
-	it("a stop during the warned phase keeps stopped and the budget the loop reached", () => {
-		const state = new SubagentState({ status: "running" });
-		state.setTurnBudget(WARNED);
-		state.markStopped(500);
-		state.markCompleted("late", 2000);
-		expect(state.status).toBe("stopped");
-		expect(state.turnBudget).toEqual(WARNED);
-	});
-
 	it("resetForResume clears the budget, which belongs to the run that produced it", () => {
-		const state = new SubagentState({ status: "completed", turnBudget: WARNED });
-		state.resetForResume(9000);
+		const state = new SubagentState({ turnBudget: WARNED });
+		state.resetForResume();
 		expect(state.turnBudget).toBeUndefined();
 	});
 });
@@ -467,18 +236,6 @@ describe("SubagentState — classification predicates", () => {
 			});
 		}
 	});
-
-	describe("instance predicates delegate to the status-level functions", () => {
-		for (const status of ALL_STATUSES) {
-			it(`"${status}": isActive=${active.has(status)}, isTerminalError=${terminalError.has(status)}, isRunning=${running.has(status)}, canBeSteered=${running.has(status)}`, () => {
-				const state = new SubagentState({ status });
-				expect(state.isActive()).toBe(active.has(status));
-				expect(state.isTerminalError()).toBe(terminalError.has(status));
-				expect(state.isRunning()).toBe(running.has(status));
-				expect(state.canBeSteered()).toBe(running.has(status));
-			});
-		}
-	});
 });
 
 describe("SubagentState — run updates", () => {
@@ -498,20 +255,11 @@ describe("SubagentState — run updates", () => {
 		]);
 	});
 
-	it("drops the previous run's updates when a fresh run starts", () => {
-		const state = new SubagentState();
-		state.recordUpdate("From the first run.");
-
-		state.markRunning(1000);
-
-		expect(state.runUpdates).toEqual([]);
-	});
-
 	it("drops the previous run's updates when a resume starts", () => {
 		const state = new SubagentState();
 		state.recordUpdate("From the run being resumed.");
 
-		state.resetForResume(2000);
+		state.resetForResume();
 
 		expect(state.runUpdates).toEqual([]);
 	});
@@ -557,41 +305,26 @@ describe("SubagentState — run updates", () => {
 });
 
 describe("SubagentState — lastProgressAt", () => {
-	it("is seeded from startedAt", () => {
-		const state = new SubagentState({ startedAt: 1000 });
+	it("defaults to when the state was created", () => {
+		const before = Date.now();
+		const state = new SubagentState();
+		const after = Date.now();
 
-		expect(state.lastProgressAt).toBe(1000);
+		expect(state.lastProgressAt).toBeGreaterThanOrEqual(before);
+		expect(state.lastProgressAt).toBeLessThanOrEqual(after);
 	});
 
 	it("is seeded from an explicit value", () => {
-		const state = new SubagentState({ startedAt: 1000, lastProgressAt: 4000 });
+		const state = new SubagentState({ lastProgressAt: 4000 });
 
 		expect(state.lastProgressAt).toBe(4000);
 	});
 
 	it("is stamped by markProgress", () => {
-		const state = new SubagentState({ startedAt: 1000 });
+		const state = new SubagentState({ lastProgressAt: 1000 });
 
 		state.markProgress(2500);
 
 		expect(state.lastProgressAt).toBe(2500);
-	});
-
-	it("restarts at the run's start when the run begins", () => {
-		const state = new SubagentState({ status: "queued", startedAt: 1000 });
-		state.markProgress(9000);
-
-		state.markRunning(5000);
-
-		expect(state.lastProgressAt).toBe(5000);
-	});
-
-	it("restarts at the resumed run's start on resume", () => {
-		const state = new SubagentState({ status: "completed", startedAt: 1000, completedAt: 2000 });
-		state.markProgress(9000);
-
-		state.resetForResume(5000);
-
-		expect(state.lastProgressAt).toBe(5000);
 	});
 });

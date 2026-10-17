@@ -158,12 +158,12 @@ export class Subagent {
 	// Lifecycle status and metrics — owned by a private value object; getters and
 	// mutation methods below delegate to it one line.
 	private readonly state: SubagentState;
-	get status(): SubagentStatus { return this.state.status; }
-	get result(): string | undefined { return this.state.result; }
-	get error(): string | undefined { return this.state.error; }
-	get stoppedWhileQueued(): boolean { return this.state.stoppedWhileQueued; }
-	get startedAt(): number { return this.state.startedAt; }
-	get completedAt(): number | undefined { return this.state.completedAt; }
+	get status(): SubagentStatus { return this.currentRun.status; }
+	get result(): string | undefined { return this.currentRun.result; }
+	get error(): string | undefined { return this.currentRun.error; }
+	get stoppedWhileQueued(): boolean { return this.currentRun.stoppedWhileQueued; }
+	get startedAt(): number { return this.currentRun.startedAt; }
+	get completedAt(): number | undefined { return this.currentRun.completedAt; }
 	get consumedAt(): number | undefined { return this.currentRun.consumedAt; }
 	get consumed(): boolean { return this.currentRun.consumed; }
 	get claimed(): boolean { return this.currentRun.claimed; }
@@ -184,10 +184,10 @@ export class Subagent {
 	get activeTools(): ReadonlyMap<string, string> { return this.state.activeTools; }
 	get responseText(): string { return this.state.responseText; }
 	get lastProgressAt(): number { return this.state.lastProgressAt; }
-	isActive(): boolean { return this.state.isActive(); }
-	isTerminalError(): boolean { return this.state.isTerminalError(); }
-	isRunning(): boolean { return this.state.isRunning(); }
-	canBeSteered(): boolean { return this.state.canBeSteered(); }
+	isActive(): boolean { return this.currentRun.isActive(); }
+	isTerminalError(): boolean { return this.currentRun.isTerminalError(); }
+	isRunning(): boolean { return this.currentRun.isRunning(); }
+	canBeSteered(): boolean { return this.currentRun.canBeSteered(); }
 
 	/**
 	 * The run in flight, or the last one to end. The initial run is born with the
@@ -384,8 +384,7 @@ export class Subagent {
 	 */
 	async run(): Promise<void> {
 		const run = this.currentRun;
-		run.start(this.execution.signal, () => this.abort());
-		this.markRunning(Date.now());
+		this.startRun(run, this.execution.signal);
 		this.execution.observer?.onRunStarted?.(this, run.kind);
 		// Cancelled before it started: end here, before the workspace and the child
 		// session cost anything.
@@ -587,11 +586,11 @@ export class Subagent {
 		// deliver what it ended with.
 		this.lastReplaced = { run: this.currentRun, outcome: this.settledOutcome() };
 		// After resetForResume, which releases the previous run's handles.
-		this.resetForResume(Date.now());
+		this.resetForResume();
 		const run = new SubagentRun("resume", options.background);
 		if (options.claimOutcome) run.claim();
 		this.currentRun = run;
-		run.start(options.signal, () => this.abort());
+		this.startRun(run, options.signal);
 		// Cancelled before it started: the turn loop takes no turn on a fired lever,
 		// so the resume ends like one aborted mid-run.
 		if (run.aborted) this.abort();
@@ -622,9 +621,15 @@ export class Subagent {
 		};
 	}
 
-	/** Transition to running state. Sets status and startedAt. */
-	markRunning(startedAt: number): void {
-		this.state.markRunning(startedAt);
+	/**
+	 * Start a run: it transitions to running and wires the caller's signal to
+	 * abort(). A run's start counts as progress, so a run that has not yet
+	 * emitted a session event reads as just started rather than stalled.
+	 */
+	private startRun(run: SubagentRun, callerSignal: AbortSignal | undefined): void {
+		const startedAt = Date.now();
+		run.start(startedAt, callerSignal, () => this.abort());
+		this.state.markProgress(startedAt);
 	}
 
 	/**
@@ -632,7 +637,7 @@ export class Subagent {
 	 * Always sets result and completedAt (??=). Only changes status if not stopped.
 	 */
 	markCompleted(result: string, completedAt?: number): void {
-		this.state.markCompleted(result, completedAt);
+		this.currentRun.markCompleted(result, completedAt);
 	}
 
 	/**
@@ -640,7 +645,7 @@ export class Subagent {
 	 * Always sets result and completedAt (??=). Only changes status if not stopped.
 	 */
 	markAborted(result: string, completedAt?: number): void {
-		this.state.markAborted(result, completedAt);
+		this.currentRun.markAborted(result, completedAt);
 	}
 
 	/**
@@ -648,12 +653,12 @@ export class Subagent {
 	 * Always sets error (formatted) and completedAt (??=). Only changes status if not stopped.
 	 */
 	markError(error: unknown, completedAt?: number): void {
-		this.state.markError(error, completedAt);
+		this.currentRun.markError(error, completedAt);
 	}
 
 	/** Transition to stopped state. Always valid — no guard. */
 	markStopped(completedAt?: number): void {
-		this.state.markStopped(completedAt);
+		this.currentRun.markStopped(completedAt);
 	}
 
 	/** Record the parent collected the current run's outcome. Idempotent. */
@@ -682,7 +687,7 @@ export class Subagent {
 	 * the slot finally frees no-ops on guardedRun()'s guard — one notification.
 	 */
 	stopQueued(): void {
-		this.state.stopQueued();
+		this.currentRun.stopQueued();
 		// A queued record has never run, so the run it never started is its initial one.
 		this.execution.observer?.onRunFinished?.(this, "initial");
 	}
@@ -698,7 +703,7 @@ export class Subagent {
 	abort(): boolean {
 		if (!this.isRunning()) return false;
 		this.currentRun.abort();
-		this.markStopped();
+		this.currentRun.markStopped();
 		return true;
 	}
 
@@ -721,9 +726,9 @@ export class Subagent {
 		this._pendingSteers = [];
 	}
 
-	/** Reset for resume: running status, new startedAt, clear completedAt/result/error; release the previous run. */
-	resetForResume(startedAt: number): void {
-		this.state.resetForResume(startedAt);
+	/** Reset for resume: clear what the previous run left on the state; release the previous run. */
+	resetForResume(): void {
+		this.state.resetForResume();
 		this.currentRun.release();
 	}
 
@@ -747,8 +752,9 @@ export class Subagent {
 			: result.responseText +
 				this.workspaceBracket.dispose({ status: finalStatus, description: this.description });
 
-		if (exhausted) this.markAborted(finalResult);
-		else this.markCompleted(finalResult);
+		// The run this completion ends, which a resume may already have replaced.
+		if (exhausted) run.markAborted(finalResult);
+		else run.markCompleted(finalResult);
 
 		this.execution.observer?.onRunFinished?.(this, run.kind);
 	}
@@ -797,7 +803,7 @@ export class Subagent {
 
 	/** Fail a run: mark error, release its handles, best-effort workspace dispose, notify observer. */
 	private fail(run: SubagentRun, err: unknown): void {
-		this.markError(err);
+		run.markError(err);
 		this.clearPendingQuestion();
 		run.release();
 		this.disposeWorkspaceQuietly("error");

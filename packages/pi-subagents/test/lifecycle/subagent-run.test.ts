@@ -1,10 +1,18 @@
 import { describe, expect, it, vi } from "vitest";
 import { SubagentRun } from "#src/lifecycle/subagent-run";
+import type { SubagentStatus } from "#src/lifecycle/subagent-state";
+
+const ALL_STATUSES: SubagentStatus[] = ["queued", "running", "completed", "aborted", "stopped", "error"];
+
+/** A run seeded in the given status. */
+function runIn(status: SubagentStatus, completedAt?: number): SubagentRun {
+	return new SubagentRun("initial", true, { status, completedAt });
+}
 
 /** A run started with the given caller signal (none by default). */
 function startedRun(callerSignal?: AbortSignal, onCallerAbort: () => void = vi.fn()): SubagentRun {
 	const run = new SubagentRun("initial", false);
-	run.start(callerSignal, onCallerAbort);
+	run.start(1000, callerSignal, onCallerAbort);
 	return run;
 }
 
@@ -83,7 +91,7 @@ describe("SubagentRun", () => {
 			expect(onCallerAbort).not.toHaveBeenCalled();
 			expect(run.aborted).toBe(false);
 
-			run.start(controller.signal, onCallerAbort);
+			run.start(1000, controller.signal, onCallerAbort);
 
 			expect(run.aborted).toBe(true);
 			expect(onCallerAbort).not.toHaveBeenCalled();
@@ -124,6 +132,176 @@ describe("SubagentRun", () => {
 				run.release();
 			}).not.toThrow();
 		});
+	});
+
+	describe("birth", () => {
+		it("is queued, with no result, error, or completion", () => {
+			const run = new SubagentRun("initial", true);
+			expect([run.status, run.result, run.error, run.completedAt, run.stoppedWhileQueued])
+				.toEqual(["queued", undefined, undefined, undefined, false]);
+		});
+
+		it("defaults startedAt to Date.now()", () => {
+			const before = Date.now();
+			const run = new SubagentRun("initial", true);
+			const after = Date.now();
+			expect(run.startedAt).toBeGreaterThanOrEqual(before);
+			expect(run.startedAt).toBeLessThanOrEqual(after);
+		});
+
+		it("seeds the outcome fields from init", () => {
+			const run = new SubagentRun("initial", true, {
+				status: "completed",
+				result: "done",
+				error: "oops",
+				stoppedWhileQueued: true,
+				startedAt: 1000,
+				completedAt: 2000,
+			});
+			expect([run.status, run.result, run.error, run.stoppedWhileQueued, run.startedAt, run.completedAt])
+				.toEqual(["completed", "done", "oops", true, 1000, 2000]);
+		});
+
+		it("start() transitions to running at the given time", () => {
+			const run = new SubagentRun("initial", true, { startedAt: 1000 });
+			run.start(2000, undefined, vi.fn());
+			expect([run.status, run.startedAt]).toEqual(["running", 2000]);
+		});
+	});
+
+	describe("markCompleted", () => {
+		it("sets status, result, and completedAt", () => {
+			const run = runIn("running");
+			run.markCompleted("all done", 5000);
+			expect([run.status, run.result, run.completedAt]).toEqual(["completed", "all done", 5000]);
+		});
+
+		it("defaults completedAt to Date.now() when not provided", () => {
+			const run = runIn("running");
+			const before = Date.now();
+			run.markCompleted("done");
+			const after = Date.now();
+			expect(run.completedAt).toBeGreaterThanOrEqual(before);
+			expect(run.completedAt).toBeLessThanOrEqual(after);
+		});
+
+		it("preserves existing completedAt (??= semantics)", () => {
+			const run = runIn("running", 1000);
+			run.markCompleted("done", 9999);
+			expect(run.completedAt).toBe(1000);
+		});
+
+		it("preserves status when already stopped, but still sets result", () => {
+			const run = runIn("stopped", 1000);
+			run.markCompleted("late result", 2000);
+			expect([run.status, run.result, run.completedAt]).toEqual(["stopped", "late result", 1000]);
+		});
+	});
+
+	describe("markAborted", () => {
+		it("sets status to 'aborted' with result and completedAt", () => {
+			const run = runIn("running");
+			run.markAborted("partial result", 3000);
+			expect([run.status, run.result, run.completedAt]).toEqual(["aborted", "partial result", 3000]);
+		});
+
+		it("preserves status when already stopped, but still sets result", () => {
+			const run = runIn("stopped", 500);
+			run.markAborted("partial", 2000);
+			expect([run.status, run.result, run.completedAt]).toEqual(["stopped", "partial", 500]);
+		});
+	});
+
+	describe("markError", () => {
+		it("sets status to 'error' and formats Error objects to .message", () => {
+			const run = runIn("running");
+			run.markError(new Error("something broke"), 6000);
+			expect([run.status, run.error, run.completedAt]).toEqual(["error", "something broke", 6000]);
+		});
+
+		it("formats non-Error values with String()", () => {
+			const run = runIn("running");
+			run.markError(42, 6000);
+			expect(run.error).toBe("42");
+		});
+
+		it("preserves status when already stopped, but still sets error", () => {
+			const run = runIn("stopped", 1000);
+			run.markError(new Error("late error"), 2000);
+			expect([run.status, run.error, run.completedAt]).toEqual(["stopped", "late error", 1000]);
+		});
+
+		it("preserves existing completedAt (??= semantics)", () => {
+			const run = runIn("running", 1000);
+			run.markError(new Error("err"), 9999);
+			expect(run.completedAt).toBe(1000);
+		});
+	});
+
+	describe("markStopped", () => {
+		it("sets status to 'stopped' and completedAt", () => {
+			const run = runIn("running");
+			run.markStopped(7000);
+			expect([run.status, run.completedAt]).toEqual(["stopped", 7000]);
+		});
+
+		it("defaults completedAt to Date.now() when not provided", () => {
+			const run = runIn("running");
+			const before = Date.now();
+			run.markStopped();
+			const after = Date.now();
+			expect(run.completedAt).toBeGreaterThanOrEqual(before);
+			expect(run.completedAt).toBeLessThanOrEqual(after);
+		});
+
+		it("overwrites any previous status: no guard", () => {
+			const run = runIn("completed");
+			run.markStopped(8000);
+			expect(run.status).toBe("stopped");
+		});
+
+		it("leaves stoppedWhileQueued false: the run had started", () => {
+			const run = runIn("running");
+			run.markStopped(8000);
+			expect(run.stoppedWhileQueued).toBe(false);
+		});
+	});
+
+	describe("stopQueued", () => {
+		it("stops a queued run and records that it never started", () => {
+			const run = runIn("queued");
+			run.stopQueued(7000);
+			expect([run.status, run.completedAt, run.stoppedWhileQueued]).toEqual(["stopped", 7000, true]);
+		});
+
+		it("defaults completedAt to Date.now() when not provided", () => {
+			const run = runIn("queued");
+			const before = Date.now();
+			run.stopQueued();
+			const after = Date.now();
+			expect(run.completedAt).toBeGreaterThanOrEqual(before);
+			expect(run.completedAt).toBeLessThanOrEqual(after);
+		});
+
+		it("stops an already-running run without claiming it never started", () => {
+			const run = runIn("running");
+			run.stopQueued(7000);
+			expect([run.status, run.stoppedWhileQueued]).toEqual(["stopped", false]);
+		});
+	});
+
+	describe("classification predicates delegate to the status-level functions", () => {
+		const active = new Set<SubagentStatus>(["running", "queued"]);
+		const terminalError = new Set<SubagentStatus>(["error", "stopped", "aborted"]);
+		const running = new Set<SubagentStatus>(["running"]);
+
+		for (const status of ALL_STATUSES) {
+			it(`"${status}": isActive=${active.has(status)}, isTerminalError=${terminalError.has(status)}, isRunning=${running.has(status)}, canBeSteered=${running.has(status)}`, () => {
+				const run = runIn(status);
+				expect([run.isActive(), run.isTerminalError(), run.isRunning(), run.canBeSteered()])
+					.toEqual([active.has(status), terminalError.has(status), running.has(status), running.has(status)]);
+			});
+		}
 	});
 
 	describe("consumption", () => {

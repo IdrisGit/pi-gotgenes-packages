@@ -1,13 +1,15 @@
 /**
- * subagent-state.ts — SubagentState value object: lifecycle status, metrics, and live activity.
+ * subagent-state.ts — SubagentState value object: metrics and live activity, and the status vocabulary.
  *
- * Owns the passive, readable state of a subagent — status, result, error,
- * timestamps, stats (toolUses, lifetimeUsage, compactionCount), and live-activity
- * fields (activeTools, responseText) and the live turn budget — together with the transition
- * methods (markRunning, markCompleted, …), accumulation methods
- * (incrementToolUses, addUsage, incrementCompactions), and live-activity
- * transition methods (setTurnBudget, addActiveTool, removeActiveTool,
- * resetResponseText, appendResponseText, markProgress) that mutate them.
+ * Owns the passive, readable state of a subagent that spans its runs — stats
+ * (toolUses, lifetimeUsage, compactionCount), live-activity fields
+ * (activeTools, responseText, lastProgressAt), and, until each run owns them,
+ * the turn budget, the pending question, the workspace notice, and the update
+ * ledger — together with the accumulation methods (incrementToolUses, addUsage,
+ * incrementCompactions) and live-activity transition methods (setTurnBudget,
+ * addActiveTool, removeActiveTool, resetResponseText, appendResponseText,
+ * markProgress) that mutate them. A run's status, result, and timestamps live
+ * on its SubagentRun.
  *
  * State is encapsulated behind getters; external code reads through them but
  * mutates only via the transition/accumulation methods. The value object owns
@@ -47,7 +49,7 @@ export interface SettledOutcome {
 
 // ---- Status classification predicates ----
 // The single decision point for the re-derived status groupings. Instance
-// methods on SubagentState delegate here; DTO consumers holding a bare
+// methods on SubagentRun delegate here; DTO consumers holding a bare
 // SubagentStatus (no SubagentState instance) call these directly.
 
 /** Running or queued — the agent is still live (started or awaiting a slot). */
@@ -72,21 +74,14 @@ interface RunUpdate {
 }
 
 export interface SubagentStateInit {
-	status?: SubagentStatus;
-	result?: string;
 	/** The question the agent ended its turn with — an outcome fact, like result. */
 	pendingQuestion?: string;
 	/** What a teardown with no result text reported — an outcome fact, like result. */
 	workspaceNotice?: string;
 	/** The run's turn limit and its use — an outcome fact, like result. */
 	turnBudget?: TurnBudget;
-	error?: string;
-	/** Whether the agent was stopped before the limiter ever admitted it. */
-	stoppedWhileQueued?: boolean;
-	startedAt?: number;
-	/** When the run last made progress; defaults to startedAt. */
+	/** When the run last made progress; defaults to when the state was created. */
 	lastProgressAt?: number;
-	completedAt?: number;
 	// Stats — seed a populated value without replaying the accumulation methods
 	toolUses?: number;
 	lifetimeUsage?: LifetimeUsage;
@@ -97,27 +92,6 @@ export interface SubagentStateInit {
 }
 
 export class SubagentState {
-	// Transition state — encapsulated behind getters, mutated only via transition methods
-	private _status: SubagentStatus;
-	get status(): SubagentStatus { return this._status; }
-
-	private _result?: string;
-	get result(): string | undefined { return this._result; }
-
-	private _error?: string;
-	get error(): string | undefined { return this._error; }
-
-	// Never-started marker — a queued agent stopped before its slot opened has no
-	// result, as distinct from a started agent that produced none.
-	private _stoppedWhileQueued: boolean;
-	get stoppedWhileQueued(): boolean { return this._stoppedWhileQueued; }
-
-	private _startedAt: number;
-	get startedAt(): number { return this._startedAt; }
-
-	private _completedAt?: number;
-	get completedAt(): number | undefined { return this._completedAt; }
-
 	// The question this agent ended its turn with, if it declared one. Part of the
 	// outcome like _result, and set alongside it at the terminal transition.
 	private _pendingQuestion?: string;
@@ -171,16 +145,10 @@ export class SubagentState {
 	get lastProgressAt(): number { return this._lastProgressAt; }
 
 	constructor(init: SubagentStateInit = {}) {
-		this._status = init.status ?? "queued";
-		this._result = init.result;
 		this._pendingQuestion = init.pendingQuestion;
 		this._workspaceNotice = init.workspaceNotice;
 		this._turnBudget = init.turnBudget;
-		this._error = init.error;
-		this._stoppedWhileQueued = init.stoppedWhileQueued ?? false;
-		this._startedAt = init.startedAt ?? Date.now();
-		this._lastProgressAt = init.lastProgressAt ?? this._startedAt;
-		this._completedAt = init.completedAt;
+		this._lastProgressAt = init.lastProgressAt ?? Date.now();
 		this._toolUses = init.toolUses ?? 0;
 		// Copy so a later addUsage() cannot mutate the caller's object.
 		this._lifetimeUsage = init.lifetimeUsage
@@ -191,26 +159,6 @@ export class SubagentState {
 		for (const name of init.activeTools ?? []) {
 			this.addActiveTool(name);
 		}
-	}
-
-	/** Running or queued — still live. */
-	isActive(): boolean {
-		return isActiveStatus(this._status);
-	}
-
-	/** Terminated by error, harness turn-limit abort, or external stop. */
-	isTerminalError(): boolean {
-		return isTerminalErrorStatus(this._status);
-	}
-
-	/** Actively running (excludes queued). */
-	isRunning(): boolean {
-		return isRunningStatus(this._status);
-	}
-
-	/** Whether a steer message can be delivered — the agent must be running. */
-	canBeSteered(): boolean {
-		return isRunningStatus(this._status);
 	}
 
 	/** Increment tool use count. Called by record-observer on tool_execution_end. */
@@ -258,14 +206,6 @@ export class SubagentState {
 		this._lastProgressAt = at;
 	}
 
-	/** Transition to running state. Sets status and startedAt. */
-	markRunning(startedAt: number): void {
-		this._status = "running";
-		this._startedAt = startedAt;
-		this._lastProgressAt = startedAt;
-		this._runUpdates.length = 0;
-	}
-
 	/** Record the budget the running turn loop reports. */
 	setTurnBudget(budget: TurnBudget): void {
 		this._turnBudget = budget;
@@ -286,42 +226,6 @@ export class SubagentState {
 		if (owed) owed.announced = true;
 	}
 
-	/**
-	 * Transition to completed state.
-	 * Always sets result and completedAt (??=). Only changes status if not stopped.
-	 */
-	markCompleted(result: string, completedAt?: number): void {
-		this._result = result;
-		this._completedAt ??= completedAt ?? Date.now();
-		if (this._status !== "stopped") {
-			this._status = "completed";
-		}
-	}
-
-	/**
-	 * Transition to aborted state.
-	 * Always sets result and completedAt (??=). Only changes status if not stopped.
-	 */
-	markAborted(result: string, completedAt?: number): void {
-		this._result = result;
-		this._completedAt ??= completedAt ?? Date.now();
-		if (this._status !== "stopped") {
-			this._status = "aborted";
-		}
-	}
-
-	/**
-	 * Transition to error state.
-	 * Always sets error (formatted) and completedAt (??=). Only changes status if not stopped.
-	 */
-	markError(error: unknown, completedAt?: number): void {
-		this._error = error instanceof Error ? error.message : String(error);
-		this._completedAt ??= completedAt ?? Date.now();
-		if (this._status !== "stopped") {
-			this._status = "error";
-		}
-	}
-
 	/** Record the question the agent ended its turn with. */
 	setPendingQuestion(question: string | undefined): void {
 		this._pendingQuestion = question;
@@ -332,34 +236,12 @@ export class SubagentState {
 		this._workspaceNotice = notice;
 	}
 
-	/** Transition to stopped state. Always valid — no guard. */
-	markStopped(completedAt?: number): void {
-		this._status = "stopped";
-		this._completedAt = completedAt ?? Date.now();
-	}
-
 	/**
-	 * Stop an agent that is still awaiting a concurrency slot. Records the
-	 * never-started fact only when the agent is genuinely still queued, so a
-	 * mis-targeted call cannot claim it.
+	 * Reset for resume: clear the turn budget, the question, and the update
+	 * ledger. The rest of the outcome is the run's own, so the resume's new run
+	 * starts without it.
 	 */
-	stopQueued(completedAt?: number): void {
-		if (this._status === "queued") this._stoppedWhileQueued = true;
-		this.markStopped(completedAt);
-	}
-
-	/**
-	 * Reset for resume: running status, new startedAt, clear
-	 * completedAt/result/error/turnBudget. Consumption and carrier claims are the
-	 * run's own, so the resume's new run starts without them.
-	 */
-	resetForResume(startedAt: number): void {
-		this._status = "running";
-		this._startedAt = startedAt;
-		this._lastProgressAt = startedAt;
-		this._completedAt = undefined;
-		this._result = undefined;
-		this._error = undefined;
+	resetForResume(): void {
 		this._turnBudget = undefined;
 		// A resumed run answers the old question; whether it asks a new one is
 		// decided when it terminates.

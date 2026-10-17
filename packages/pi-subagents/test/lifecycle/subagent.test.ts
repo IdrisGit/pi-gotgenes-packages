@@ -102,7 +102,8 @@ function makeSubagent(overrides: MakeSubagentOptions = {}): Subagent {
 		description: description ?? "test",
 		isBackground: isBackground ?? true,
 		execution: execution ?? makeStubExecution(),
-		state: state ?? new SubagentState({ status, result, startedAt, completedAt }),
+		state,
+		outcome: { status, result, startedAt, completedAt },
 	});
 }
 
@@ -127,6 +128,7 @@ function createRunnableAgent(overrides?: {
 	workspaceProvider?: WorkspaceProvider;
 	isBackground?: boolean;
 	maxTurns?: number;
+	status?: SubagentStatus;
 }) {
 	const createSubagentSession = overrides?.createSubagentSession ?? defaultFactory();
 	const observer = overrides?.observer ?? {};
@@ -135,6 +137,7 @@ function createRunnableAgent(overrides?: {
 		id: "run-1",
 		description: "run test",
 		isBackground: overrides?.isBackground,
+		status: overrides?.status,
 		execution: {
 			createSubagentSession,
 			observer,
@@ -389,16 +392,14 @@ describe("Subagent", () => {
 			});
 
 			it("buffers the message and returns a buffered outcome when the session is not ready", async () => {
-				const agent = makeSubagent();
-				agent.markRunning(Date.now());
+				const agent = makeSubagent({ status: "running" });
 				const outcome = await agent.steer("hello");
 				expect(outcome).toEqual({ kind: "buffered" });
 				expect(agent.pendingSteerCount).toBe(1);
 			});
 
 			it("delivers to the session and returns a delivered outcome when the session is ready", async () => {
-				const agent = makeSubagent();
-				agent.markRunning(Date.now());
+				const agent = makeSubagent({ status: "running" });
 				const stub = createSubagentSessionStub();
 				agent.subagentSession = toSubagentSession(stub);
 				const outcome = await agent.steer("go faster");
@@ -1696,10 +1697,9 @@ describe("Subagent", () => {
 			});
 
 			it("flushes pending steers when session is created", async () => {
-				const agent = createRunnableAgent();
 				// A steer arriving while the agent is running but the session is not yet
 				// ready buffers; run() flushes it once the session is created.
-				agent.markRunning(Date.now());
+				const agent = createRunnableAgent({ status: "running" });
 				void agent.steer("hurry up");
 				expect(agent.pendingSteerCount).toBe(1);
 				await agent.run();
@@ -1922,6 +1922,52 @@ describe("Subagent", () => {
 				expect(agent.isBackground).toBe(background);
 			},
 		);
+	});
+
+	describe("a run's start", () => {
+		it("counts as progress for the initial run", () => {
+			const agent = createRunnableAgent({ createSubagentSession: () => new Promise<never>(() => {}) });
+			const now = vi.spyOn(Date, "now").mockReturnValue(5000);
+
+			void agent.run();
+
+			now.mockRestore();
+			expect([agent.status, agent.startedAt, agent.lastProgressAt]).toEqual(["running", 5000, 5000]);
+		});
+
+		it("counts as progress for a resume", () => {
+			const { agent, stub } = createResumableAgent();
+			const loop = Promise.withResolvers<TurnLoopResult>();
+			stub.runTurnLoop.mockReturnValue(loop.promise);
+			const now = vi.spyOn(Date, "now").mockReturnValue(5000);
+
+			void agent.resume("continue", { background: true });
+
+			now.mockRestore();
+			expect([agent.status, agent.startedAt, agent.lastProgressAt]).toEqual(["running", 5000, 5000]);
+			loop.resolve(turnLoopResult({ responseText: "second" }));
+		});
+
+		it("leaves a late completion of an aborted run on that run, not on the resume that replaced it", async () => {
+			const { factory, stub } = createFactory();
+			// The first loop ignores its lever and returns only once released, after the
+			// resume has started; the resume's loop stays in flight.
+			const first = Promise.withResolvers<TurnLoopResult>();
+			const second = Promise.withResolvers<TurnLoopResult>();
+			stub.runTurnLoop.mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise);
+			const agent = createRunnableAgent({ createSubagentSession: factory });
+			const initial = agent.run();
+			await vi.waitFor(() => expect(stub.runTurnLoop).toHaveBeenCalledOnce());
+			agent.abort();
+			void agent.resume("continue", { background: true });
+
+			first.resolve(turnLoopResult({ responseText: "late answer" }));
+			await initial;
+
+			expect([agent.status, agent.result]).toEqual(["running", undefined]);
+			second.resolve(turnLoopResult({ responseText: "resumed answer" }));
+			await agent.promise;
+		});
 	});
 
 	describe("a resume", () => {

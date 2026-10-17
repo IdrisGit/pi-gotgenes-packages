@@ -82,16 +82,10 @@ export function createTestSubagent(overrides: TestSubagentOptions = {}): Subagen
 	// running fixture), as the spread this replaced did.
 	const startedAt = seeded(overrides, "startedAt", 1000);
 	const state = new SubagentState({
-		// The initial run's outcome
-		status: seeded(overrides, "status", "completed"),
-		result: seeded(overrides, "result", "All done."),
+		// The initial run's outcome, still on the state
 		pendingQuestion: overrides.pendingQuestion,
 		workspaceNotice: overrides.workspaceNotice,
 		turnBudget: overrides.turnBudget,
-		error: overrides.error,
-		stoppedWhileQueued: overrides.stoppedWhileQueued,
-		startedAt,
-		completedAt: seeded(overrides, "completedAt", 2000),
 		// What spans runs
 		lastProgressAt: overrides.lastProgressAt ?? startedAt,
 		toolUses: overrides.toolUses ?? 3,
@@ -112,6 +106,12 @@ export function createTestSubagent(overrides: TestSubagentOptions = {}): Subagen
 		state,
 		// The initial run's outcome
 		outcome: {
+			status: seeded(overrides, "status", "completed"),
+			result: seeded(overrides, "result", "All done."),
+			error: overrides.error,
+			stoppedWhileQueued: overrides.stoppedWhileQueued,
+			startedAt,
+			completedAt: seeded(overrides, "completedAt", 2000),
 			consumedAt: overrides.consumedAt,
 		},
 	});
