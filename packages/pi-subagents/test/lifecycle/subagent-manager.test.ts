@@ -858,9 +858,13 @@ describe("SubagentManager", () => {
       });
 
       it("does not keep the process alive on its own", () => {
+        // An unref'd timer is not an active resource: it keeps nothing alive.
+        const activeTimers = () => process.getActiveResourcesInfo().filter((resource) => resource === "Timeout").length;
+        const before = activeTimers();
+
         ({ manager } = createManager());
 
-        expect((manager as any).sweepInterval.hasRef()).toBe(false);
+        expect(activeTimers()).toBe(before);
       });
     });
 
@@ -1012,10 +1016,22 @@ describe("SubagentManager", () => {
     describe("consumption-aware session release sweep", () => {
       let manager: SubagentManager;
 
+      // Only the interval is faked: the sweep runs through its real timer, and the
+      // Date.now spies below keep setting the clock it reads.
+      beforeEach(() => {
+        vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+      });
+
       afterEach(async () => {
         vi.restoreAllMocks();
         await manager.dispose();
+        vi.useRealTimers();
       });
+
+      /** Let the sweep's interval fire once. */
+      function runSweep(): void {
+        vi.advanceTimersByTime(60_000);
+      }
 
       /** Spawn a background agent over a session factory and await its completion. */
       async function spawnCompleted(
@@ -1038,12 +1054,12 @@ describe("SubagentManager", () => {
 
         // 10 min after completion is only 5 min after consumption → still retained.
         nowSpy.mockReturnValue(completedAt + 10 * 60_000);
-        (manager as any).sweep();
+        runSweep();
         expect(manager.getRecord(id)!.isSessionReady()).toBe(true);
 
         // 10 min after consumption → session released, record survives.
         nowSpy.mockReturnValue(completedAt + 15 * 60_000);
-        (manager as any).sweep();
+        runSweep();
         const swept = manager.getRecord(id)!;
         expect(swept).toBeDefined();
         expect(swept.isSessionReady()).toBe(false);
@@ -1056,11 +1072,11 @@ describe("SubagentManager", () => {
         const nowSpy = vi.spyOn(Date, "now");
 
         nowSpy.mockReturnValue(completedAt + 11 * 60_000); // past the consumed window
-        (manager as any).sweep();
+        runSweep();
         expect(manager.getRecord(id)!.isSessionReady()).toBe(true); // unconsumed → held
 
         nowSpy.mockReturnValue(completedAt + 721 * 60_000); // past the 12h cap
-        (manager as any).sweep();
+        runSweep();
         expect(manager.getRecord(id)!.isSessionReady()).toBe(false);
       });
 
@@ -1074,7 +1090,7 @@ describe("SubagentManager", () => {
         const queueRelease = vi.spyOn(manager.getRecord(queuedId)!, "releaseSession");
 
         vi.spyOn(Date, "now").mockReturnValue(Date.now() + 10_000 * 60_000);
-        (manager as any).sweep();
+        runSweep();
 
         expect(runRelease).not.toHaveBeenCalled();
         expect(queueRelease).not.toHaveBeenCalled();
@@ -1091,7 +1107,7 @@ describe("SubagentManager", () => {
         const completedAt = record.completedAt!;
         record.markConsumed(completedAt);
         vi.spyOn(Date, "now").mockReturnValue(completedAt + 2 * 60_000); // 2 min > 1 min window
-        (manager as any).sweep();
+        runSweep();
         expect(manager.getRecord(id)!.isSessionReady()).toBe(false);
       });
 
@@ -1099,7 +1115,7 @@ describe("SubagentManager", () => {
         const id = await spawnCompleted("/tasks/agent.jsonl");
         const completedAt = manager.getRecord(id)!.completedAt!;
         vi.spyOn(Date, "now").mockReturnValue(completedAt + 721 * 60_000);
-        (manager as any).sweep();
+        runSweep();
         expect(manager.listAgents()).toHaveLength(1);
         expect(manager.getRecord(id)).toBeDefined();
       });
