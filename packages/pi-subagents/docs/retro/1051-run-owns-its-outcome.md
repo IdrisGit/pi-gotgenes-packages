@@ -33,5 +33,32 @@ Operator gate: #1058 stays separate, a replaced run tracks its own fate (`markRe
 - `packages/pi-subagents/test/lifecycle/subagent.test.ts`: migrating `makeSubagent` (70 sites) onto `createTestSubagent` declined; the defaults differ (queued versus completed).
 - `packages/pi-subagents/src/lifecycle/subagent.ts`: the ~15 one-line read-through getters stay; a generic delegating proxy was judged a wrong-abstraction risk.
 
+## Stage: Implementation — TDD (2026-10-17T09:00:21Z)
+
+### Session summary
+
+All eleven plan steps landed as eleven commits: the sweep ride-along, four preparatory steps (initial run from construction, no production status seed, explicit fixture seeds, the replaced-run scaffold), five field-move slices, and the docs.
+Two commits followed: a dead-code cleanup, and a docs fix after the reviewer's WARN.
+The `pi-subagents` suite went from 2163 to 2155 tests (state-test blocks deleted with their mechanism, run and `Subagent` tests added); every metric row reads its target (`_superseded` 0, `resetForResume` 0, `as any` 0, `lifecycle/subagent.ts` 827 lines, no clone group in the workspace, health 88 A).
+
+### Observations
+
+- Deviation: step 7 is typed `fix:`, as plan step 7 allowed, so this issue now cuts a `pi-subagents` patch release.
+  It is not `refactor:` only, as the plan's Release Recommendation rationale says.
+  The reviewer showed the late-completion window is reachable: `abort()` marks the run `stopped` synchronously while the turn loop unwinds, and `resumeRefusal` accepts a stopped record, so `SubagentsService.abort` then `resume` hit it.
+  The commit was reworded with a scripted rebase, and the tree diff against a backup tag was empty.
+- Deviation: an extra commit ("drop the Subagent `markAborted` and `markError` passthroughs") cleared a `fallow dead-code` finding that step 7 created, once `complete()`/`fail()` began transitioning their own run.
+- Deviation: `ResumeCallOptions` became a type alias of `ResumeRunOptions` (which gained `claimOutcome`) rather than an empty extending interface.
+- Deviation: `SubagentState.resetForResume` lost its `startedAt` parameter in step 7 (progress moved to `startRun`) before step 9 deleted it.
+- Mutation finding (step 6): the plan predicted the [#987] announcement tests would kill "seed the resume run with the previous `consumedAt`"; they never mark consumption, so only the new `Subagent`-level "starts unconsumed after the parent collected the run before it" test pins it.
+  The "claim the new run whenever the previous run is claimed" mutation killed the [#987] tests instead of the predicted "leaves the outcome unclaimed by default".
+- Mutation finding (step 1): an interval changed to 120 s survives the sweep tests (two 60 s advances reach it), as the planning spike found; the empty-callback mutation killed exactly the three predicted tests.
+- The old "keeps only the most recently superseded run" behavior became "reports the waited run's outcome even when two resumes replaced it" in step 10: the issue's one-slot limit is gone, which the step 10 commit body records.
+- The record-observer test that the observer leaves the turn budget alone was deleted in step 8: the observer holds only `SubagentState`, so the type now pins it.
+- Seeds partitioned by owner (step 4) paid off as planned: each later slice's moved key surfaced as a `tsc` excess-property error in the fixtures.
+- Pre-completion reviewer: round 1 WARN (the `refactor:` typing of a reachable fix; an unscoped "no clone group" claim), both resolved; round 2 PASS.
+  Round 2's full `pnpm run test` saw 10 `pi-permission-system` timeouts under load that passed when re-run alone.
+
+[#987]: https://github.com/gotgenes/pi-packages/issues/987
 [#1013]: https://github.com/gotgenes/pi-packages/issues/1013
 [#1015]: https://github.com/gotgenes/pi-packages/issues/1015
