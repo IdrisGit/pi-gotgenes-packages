@@ -210,13 +210,14 @@ The population is the **shape-indistinguishable** token: one an absolute-path sh
 
 **The bound.**
 The checkpoint honors a link's `allow` on an `external_directory`-family ask when the ask carries the **nothing-on-disk license**.
-The bash external-directory gate grants it only when the grammar read the whole command without error recovery, and then iff, for **every** path it left uncovered:
+The bash external-directory gate grants it only when the command reads verbatim (the grammar parsed it without error recovery, and it holds no backslash-newline continuation), and then iff, for **every** path it left uncovered:
 
-1. the path was located and has a canonical form — a relative token after a non-literal `cd` is resolved against the session cwd only as a display guess, a token whose spelling the shell rewrites at run time (a glob, a brace, a parameter or command substitution, an escape) is probed as typed rather than as the path that runs, and a POSIX-absolute token on a win32 host stays literal (Git Bash keeps it so, per ADR 0003), so none of the three licenses;
+1. the token is spelled verbatim as the absolute path it names — a relative token depends on a working directory the projection only models (after a non-literal `cd` it is a display guess, and a literal `cd` that fails leaves the shell where it was), a `.` or `..` segment is collapsed lexically while the kernel resolves it through any symlinked ancestor, a glob, brace, parameter or command substitution, or escape is rewritten by the shell at run time, and a POSIX-absolute token on a win32 host stays literal (Git Bash keeps it so, per ADR 0003), so none of these licenses;
 2. the path is not the root, and walking its canonical form toward the root, the first entry `lstat` finds is the filesystem root itself — the root exists, so `rm -rf /` names something; only "no such entry" continues the walk, so an ancestor that is a file, or one the process cannot read, refuses the license;
 3. its attributed effect is not a proven `write` — a redirect destination or a declared writer is a file by syntax or by the user's word, not a token whose shape is in doubt.
 
-A parse that needed error recovery is refused outright because tree-sitter invents structure around the failure: an extglob operand (`shopt -s extglob`, then `rm -rf /@(etc|var)`) stands truncated as `/@`, which carries no expansion character and names nothing on disk while the command reaches `/etc`.
+A command that does not read verbatim is refused outright because the projection's tokens are not the words bash runs: error recovery leaves an extglob operand (`shopt -s extglob`, then `rm -rf /@(etc|var)`) truncated as `/@`, and a backslash-newline splits `/e\<newline>tc/passwd` into a flagged `/e`, though bash reaches `/etc` in both.
+The rule is a positive spelling, not a list of exclusions, because three review rounds found the exclusions one at a time.
 
 A nonexistent path cannot be read, so the `_read` half of such an ask is vacuous.
 The `_write` half is where the conditions bite: a path whose top-level component does not exist can only come into being by creating a new entry directly under the root.
@@ -248,7 +249,7 @@ The later entries record no paths, so their commands were re-projected through `
 Every one of the 31 is a non-path token — `gh api` routes, Pi slash commands, `git log -L` ranges, commit-message prose, and regex fragments.
 The 18 recent asks' licensing paths were 18 `unproven` and one core read, which is why the bound does not ask for a proven read.
 Another 14 asks mixed an unrooted token with a real external path, and those keep prompting, because the license is granted only when every path qualifies.
-The expansion, root, and whole-parse conditions were added after pre-completion review found that a glob (`cat /e?c/passwd`), the root itself (`rm -rf /`), and a truncated extglob (`/@(etc|var)`) had licensed.
+The verbatim-spelling, root, and verbatim-read conditions were added after pre-completion review found that a glob (`cat /e?c/passwd`), the root itself (`rm -rf /`), a truncated extglob (`/@(etc|var)`), a backslash-newline, a relative path after a failing `cd`, and a `..` segment had licensed.
 Re-run through the shipped gate over the same recent asks (a disposable vitest harness that fed every `permission_request.waiting` bash entry on an `external_directory` surface through `BashProgram.parse` and `describeBashExternalDirectoryGate`, with the repo root as the assumed working directory), 8 of 430 carry the license (1 of the 430 had a parse error): seven tokens that name no host path (`git log -L` ranges, commit-message and `echo` prose, a container mount path) and one real edit target, `sudo -n --ed /nonexistent-dir-xyz/f`, which keeps its own bash-surface floor ask.
 
 **An operand the gate never flagged.**
