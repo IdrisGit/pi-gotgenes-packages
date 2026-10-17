@@ -53,3 +53,18 @@ The test count is unchanged at 69; `src/` and `peerDependencies` are untouched, 
   The prune that followed was gated on `grep -c '0\.84\.4\|27\.0\.0' pnpm-lock.yaml` reporting 0, and `pnpm install --frozen-lockfile` passed afterward.
 - Pre-completion reviewer: PASS.
   It independently enumerated every `#src`/`#test` specifier in the judge and confirmed that no workspace package depends on a pruned version.
+
+## Stage: Sync (worktree) (2026-10-17T08:09:39Z)
+
+### Session summary
+
+Root `pnpm run lint` and `pnpm fallow dead-code` both passed before the rebase.
+The plan's `**Release:**` marker is `ship independently`, with only `test:` and `build:` commits, so `/ship` should find nothing to release for `pi-permission-model-judge`.
+The follow-up for the repo-wide `#src` alias sweep is filed as #1078.
+
+**Peer session transcript:** `/Users/chris/.pi/agent/sessions/--Users-chris-development-pi-pi-packages-worktrees-issue-1077--/2026-10-17T03-44-40-941Z_01a147f6-37ec-76cb-b732-afe4619c93b9.jsonl` — read with `read_session_file` for message-level verification at land/retro time.
+
+### Observations
+
+- `/ship` should confirm `./scripts/release/next-version.sh pi-permission-model-judge` prints nothing rather than dispatch a release.
+- The `build:` commit touches `pnpm-lock.yaml` and `pnpm-workspace.yaml`; a peer landing first with lockfile changes would conflict, and the rebase would stop for the operator.
