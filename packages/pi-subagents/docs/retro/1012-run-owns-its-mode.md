@@ -54,3 +54,16 @@ The pi-subagents suite went from 2142 to 2163 tests (+21).
 - The Tidy-First assessor's signal-call count (1) was wrong; there were 3, as the planning note warned.
 - Every step-6 mutation killed its predicted set, and the fallback mutation (`?? true`) also killed the widget's background-only filtering tests, which build passive records.
 - Pre-completion reviewer: WARN (round 1: a garbled widget doc comment, the dropped `finally`, a stale `fix:` commit type in the roadmap), WARN (round 2: the "whatever mode it was spawned in" wording in two places), then PASS (round 3).
+
+## Stage: Sync (worktree) (2026-10-17T02:39:03Z)
+
+### Session summary
+
+`pnpm run lint` and `pnpm fallow dead-code` both pass on the worktree.
+The plan's marker is `**Release:** ship independently`, and the breaking `fix(pi-subagents)!:` commit carries its `BREAKING CHANGE:` footer, so `/ship` should dispatch a major release for `pi-subagents`; no follow-up issues were filed, and #1013 and #1051 stay open as the roadmap's next steps.
+
+**Peer session transcript:** `/Users/chris/.pi/agent/sessions/--Users-chris-development-pi-pi-packages-worktrees-issue-1012--/2026-10-16T05-54-22-834Z_01a14346-99f1-77ac-ba5d-7e561de46cad.jsonl` — read with `read_session_file({ path: "<path>" })` for message-level verification at land/retro time.
+
+### Observations
+
+The Tidy-First deferral (`resumeExisting`'s `signal ?? new AbortController().signal` fallback) is unchanged and unfiled by design.
