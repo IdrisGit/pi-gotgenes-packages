@@ -499,6 +499,24 @@ describe("AgentTool — resume path", () => {
 			expect(result.details).toMatchObject({ status: "background", agentId: "agent-1" });
 		});
 
+		it("says the resume is queued, with its position, when it waits for a slot", async () => {
+			const deps = createToolDeps();
+			mockResumeStart(deps, { status: "queued" });
+
+			const result = await execute(deps, backgroundResume);
+
+			expect(textOf(result)).toBe(
+				"Agent resume queued in background.\n" +
+					"Agent ID: agent-1\n" +
+					"Type: Agent\n" +
+					"Description: answer\n" +
+					"Position: queued (max 4 concurrent)\n" +
+					"\nYou will be notified when this agent completes.\n" +
+					"Use get_subagent_result to retrieve full results, or steer_subagent to send it messages.\n" +
+					"Do not duplicate this agent's work.",
+			);
+		});
+
 		it("leaves the resumed outcome uncollected, for the completion notice to deliver", async () => {
 			const deps = createToolDeps();
 			const record = mockResumeStart(deps);

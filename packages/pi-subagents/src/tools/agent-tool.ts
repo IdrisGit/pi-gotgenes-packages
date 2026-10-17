@@ -168,20 +168,23 @@ export class AgentTool {
 	/**
 	 * Start an existing agent's resume and return at once; the completion notice
 	 * delivers its outcome. Nothing claims the outcome and no tool-call signal is
-	 * wired, as for a background spawn.
+	 * wired, as for a background spawn, and like one it may wait for a
+	 * concurrency slot, which the launch message reports.
 	 */
 	private resumeInBackground(id: string, prompt: string, config: ResolvedSpawnConfig) {
 		const start = this.manager.startResume(id, prompt, { background: true });
 		if (start.kind === "refused") {
 			return textResult(resumeRefusalMessage(start.reason, id));
 		}
+		const queued = start.record.status === "queued";
 		return renderBackgroundLaunch({
-			headline: "Agent resumed in background.",
+			headline: queued ? "Agent resume queued in background." : "Agent resumed in background.",
 			id: start.record.id,
 			displayName: config.identity.displayName,
 			description: config.execution.description,
 			detailBase: config.presentation.detailBase,
 			outputFile: start.record.outputFile,
+			queuePosition: queued ? { maxConcurrent: this.settings.maxConcurrent } : undefined,
 		});
 	}
 
