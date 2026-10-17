@@ -205,7 +205,7 @@ export class BashPathResolver {
       this.projectRuleCandidates(candidates);
     return {
       externalAccesses: this.withWorkdirExternal(
-        this.projectExternalPaths(candidates),
+        this.projectExternalPaths(candidates, new SourceText(rootNode)),
       ),
       ruleCandidates,
       argumentSpellings,
@@ -570,12 +570,14 @@ export class BashPathResolver {
    */
   private projectExternalPaths(
     candidates: readonly PathCandidate[],
+    source: SourceText,
   ): BashExternalPath[] {
     const seen = new Map<string, number>();
     const externalPaths: BashExternalPath[] = [];
 
-    for (const { token, base, effect, role } of candidates) {
+    for (const { token, base, effect, role, span } of candidates) {
       if (withdrawnByRole(role)) continue;
+      const location = locationOfSpelling(token, span, source);
       const candidate = admittedByRole(role)
         ? token
         : classifyTokenAsPathCandidate(token);
@@ -590,7 +592,7 @@ export class BashPathResolver {
             effect,
             seen,
             externalPaths,
-            locationOfSpelling(token),
+            location,
           );
         }
         continue;
@@ -620,7 +622,7 @@ export class BashPathResolver {
         effect,
         seen,
         externalPaths,
-        locationOfSpelling(token),
+        location,
       );
     }
 
@@ -858,9 +860,20 @@ const SHELL_EXPANSION_CHARACTERS = /[*?[{$`\\]/;
  * `cd` that fails leaves the shell where it was), and a dot segment is
  * collapsed lexically while the kernel resolves it through any symlinked
  * ancestor, so neither names a path a filesystem fact may be read from.
+ *
+ * The token must also be a whole argument that stands alone in the source:
+ * the grammar can split one bash word into two arguments with no error (the
+ * `/e` of ``/e`echo tc`/passwd``), and only the whitespace or operator around
+ * a word says that bash reads it as written.
  */
-function locationOfSpelling(token: string): PathLocation {
-  return isVerbatimAbsolute(token) ? {} : { unlocated: "not-verbatim" };
+function locationOfSpelling(
+  token: string,
+  span: SourceSpan | undefined,
+  source: SourceText,
+): PathLocation {
+  return isVerbatimAbsolute(token) && source.standsAlone(span)
+    ? {}
+    : { unlocated: "not-verbatim" };
 }
 
 function isVerbatimAbsolute(token: string): boolean {
@@ -870,6 +883,54 @@ function isVerbatimAbsolute(token: string): boolean {
     .split("/")
     .every((segment) => segment !== "." && segment !== "..");
 }
+
+/**
+ * The command source a tree was parsed from, read by span to tell whether a
+ * token is a whole word as bash splits it.
+ */
+class SourceText {
+  private readonly text: string;
+  private readonly offset: number;
+
+  constructor(rootNode: TSNode) {
+    this.text = rootNode.text;
+    this.offset = rootNode.startIndex;
+  }
+
+  /**
+   * Whether `span` covers a whole word: bounded on both sides by the start or
+   * end of the source, whitespace, or an operator. No span (a token read from
+   * part of an argument, or from a salvaged region) never stands alone.
+   */
+  standsAlone(span: SourceSpan | undefined): boolean {
+    if (span === undefined) return false;
+    const start = span.start - this.offset;
+    const end = span.end - this.offset;
+    return this.endsWordAt(start - 1) && this.endsWordAt(end);
+  }
+
+  /**
+   * Whether the character at `index` ends a word, or the index is past the
+   * source edge. A `<` or `>` that opens a process substitution (`<(`, `>(`)
+   * continues the word, and so does a parenthesis, which ends one only around
+   * a subshell or group; reading either as a boundary would let a split word
+   * pass, so both are refused.
+   */
+  private endsWordAt(index: number): boolean {
+    if (index < 0 || index >= this.text.length) return true;
+    const character = this.text.charAt(index);
+    if (
+      (character === "<" || character === ">") &&
+      this.text.charAt(index + 1) === "("
+    ) {
+      return false;
+    }
+    return WORD_BOUNDARY.test(character);
+  }
+}
+
+/** Characters bash ends a word on: whitespace and the control and redirection operators. */
+const WORD_BOUNDARY = /[\s;&|<>]/;
 
 /** The key an argument spelling is filed under: its node's source span. */
 function spanKey({ start, end }: SourceSpan): string {

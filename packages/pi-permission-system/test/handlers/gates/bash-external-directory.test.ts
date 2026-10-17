@@ -294,6 +294,45 @@ describe("describeBashExternalDirectoryGate", () => {
       },
     );
 
+    it.each([
+      ["a mid-word backtick", "cat /e`echo tc`/passwd"],
+      ["a quoted head before a backtick", 'cat "/e"`echo tc`"/passwd"'],
+      ["a mid-word process substitution", "cat /e<(true)tc/passwd"],
+      ["a read redirect", "cat < /e`echo tc`/passwd"],
+    ])(
+      "withholds it from a token the grammar split out of one word (%s)",
+      async (_, command) => {
+        expect(await licenseOf(command)).toBeUndefined();
+      },
+    );
+
+    it("withholds it from a value read out of part of an argument", async () => {
+      // `--file=` and the path share one word; the token has no span of its own
+      // to bound, so it cannot be shown to stand alone.
+      expect(
+        await licenseOf("grep --file=/pi-permission-882-absent/x foo"),
+      ).toBeUndefined();
+    });
+
+    it("withholds it from a token beside a parenthesis, which is refused as a boundary", async () => {
+      // A parenthesis ends a word only around a subshell or group; the check
+      // does not tell the two apart, so it costs this whole word a prompt.
+      expect(
+        await licenseOf("(cat /pi-permission-882-absent/B1)"),
+      ).toBeUndefined();
+    });
+
+    it.each([
+      ["a trailing operator", "cat /pi-permission-882-absent/B1;"],
+      ["a pipe", "cat /pi-permission-882-absent/B1|wc -l"],
+      ["a read redirect", "cat </pi-permission-882-absent/B1"],
+    ])(
+      "still licenses a whole word bounded by an operator (%s)",
+      async (_, command) => {
+        expect(await licenseOf(command)).toBe("nothing-on-disk");
+      },
+    );
+
     it("withholds it from a proven write", async () => {
       expect(await licenseOf(`echo x > ${ABSENT_AT_ROOT}/f`)).toBeUndefined();
     });
