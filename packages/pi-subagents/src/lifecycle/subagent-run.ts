@@ -33,6 +33,12 @@ export interface CarrierClaim {
 	release(): void;
 }
 
+/** One update a child sent during a run, and whether an announcement delivered it. */
+interface RunUpdate {
+	message: string;
+	announced: boolean;
+}
+
 /** Seeds for a run's outcome, for a record built in a known state (test fixtures). */
 export interface RunOutcomeInit {
 	status?: SubagentStatus;
@@ -48,6 +54,8 @@ export interface RunOutcomeInit {
 	workspaceNotice?: string;
 	/** The run's turn limit and its use. */
 	turnBudget?: TurnBudget;
+	/** Updates the child sent, in order, each still owed to a carrier. */
+	runUpdates?: readonly string[];
 	/** Time the parent collected the outcome; undefined = obligation still open. */
 	consumedAt?: number;
 }
@@ -95,6 +103,15 @@ export class SubagentRun {
 	private _turnBudget?: TurnBudget;
 	get turnBudget(): TurnBudget | undefined { return this._turnBudget; }
 
+	// The updates the child sent during this run, each remembering whether the
+	// announcement channel delivered it, so a message reaches the parent once,
+	// through whichever channel could reach it, and no carrier repeats it.
+	private readonly updates: RunUpdate[] = [];
+	/** The updates no announcement delivered: what an outcome carrier must render. */
+	get runUpdates(): readonly string[] {
+		return this.updates.filter((update) => !update.announced).map((update) => update.message);
+	}
+
 	// Result delivery — whether the parent has collected this run's outcome.
 	private _consumedAt?: number;
 	get consumedAt(): number | undefined { return this._consumedAt; }
@@ -124,6 +141,7 @@ export class SubagentRun {
 		this._pendingQuestion = init.pendingQuestion;
 		this._workspaceNotice = init.workspaceNotice;
 		this._turnBudget = init.turnBudget;
+		for (const message of init.runUpdates ?? []) this.recordUpdate(message);
 		this._consumedAt = init.consumedAt;
 	}
 
@@ -241,6 +259,21 @@ export class SubagentRun {
 	/** Record what a teardown reported when no result text could carry it. */
 	setWorkspaceNotice(notice: string): void {
 		this._workspaceNotice = notice;
+	}
+
+	/** Record an update the child sent during this run, owed to a carrier until delivered. */
+	recordUpdate(message: string): void {
+		this.updates.push({ message, announced: false });
+	}
+
+	/**
+	 * The announcement channel delivered this message, so no outcome carrier may
+	 * repeat it. Marks the first copy still owed: two identical messages are two
+	 * facts the child sent twice, and one announcement delivered one of them.
+	 */
+	markUpdateAnnounced(message: string): void {
+		const owed = this.updates.find((update) => !update.announced && update.message === message);
+		if (owed) owed.announced = true;
 	}
 
 	/** Record the budget the running turn loop reports. */

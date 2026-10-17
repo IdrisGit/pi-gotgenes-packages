@@ -1974,6 +1974,19 @@ describe("Subagent", () => {
 				expect([agent.consumed, agent.consumedAt]).toEqual([false, undefined]);
 			});
 
+			it("starts with no updates owed, whatever the run before it still owed", async () => {
+				const { factory, notify } = createFactory();
+				// No run config: the update channel defaults to on.
+				const agent = createRunnableAgent({ createSubagentSession: factory });
+				await agent.run();
+				notify("From the first run.");
+				expect(agent.runUpdates).toEqual(["From the first run."]);
+
+				await agent.resume("continue", { background: true });
+
+				expect(agent.runUpdates).toEqual([]);
+			});
+
 			it("a claim on a settled run does not claim the resume that follows it", async () => {
 				const { agent } = createResumableAgent();
 				agent.claim();

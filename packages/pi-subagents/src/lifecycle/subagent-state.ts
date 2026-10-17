@@ -3,9 +3,8 @@
  *
  * Owns the passive, readable state of a subagent that spans its runs — stats
  * (toolUses, lifetimeUsage, compactionCount), live-activity fields
- * (activeTools, responseText, lastProgressAt), and, until each run owns it,
- * the update ledger — together with the accumulation methods
- * (incrementToolUses, addUsage, incrementCompactions) and live-activity
+ * (activeTools, responseText, lastProgressAt) — together with the accumulation
+ * methods (incrementToolUses, addUsage, incrementCompactions) and live-activity
  * transition methods (addActiveTool, removeActiveTool, resetResponseText,
  * appendResponseText, markProgress) that mutate them. A run's outcome lives on
  * its SubagentRun.
@@ -66,12 +65,6 @@ export function isRunningStatus(status: SubagentStatus): boolean {
 	return status === "running";
 }
 
-/** One update a child sent during a run, and whether an announcement delivered it. */
-interface RunUpdate {
-	message: string;
-	announced: boolean;
-}
-
 export interface SubagentStateInit {
 	/** When the run last made progress; defaults to when the state was created. */
 	lastProgressAt?: number;
@@ -85,18 +78,6 @@ export interface SubagentStateInit {
 }
 
 export class SubagentState {
-	// The updates the child sent during this run, each remembering whether the
-	// announcement channel delivered it — so a message reaches the parent once,
-	// through whichever channel could reach it, and no carrier repeats it.
-	// Scoped to the run, so it clears wherever a run begins.
-	// Transient runtime state, so deliberately not seedable via SubagentStateInit
-	// — a rehydrated record has no run to have produced these.
-	private _runUpdates: RunUpdate[] = [];
-	/** The updates no announcement delivered — what an outcome carrier must render. */
-	get runUpdates(): readonly string[] {
-		return this._runUpdates.filter((update) => !update.announced).map((update) => update.message);
-	}
-
 	// Stats — accumulated via mutation methods, readable via getters
 	private _toolUses: number;
 	get toolUses(): number { return this._toolUses; }
@@ -177,29 +158,5 @@ export class SubagentState {
 	/** Record that the run made progress. Called by record-observer on every session event. */
 	markProgress(at: number = Date.now()): void {
 		this._lastProgressAt = at;
-	}
-
-	/** Record an update the child sent during this run, owed to a carrier until delivered. */
-	recordUpdate(message: string): void {
-		this._runUpdates.push({ message, announced: false });
-	}
-
-	/**
-	 * The announcement channel delivered this message, so no outcome carrier may
-	 * repeat it. Marks the first copy still owed: two identical messages are two
-	 * facts the child sent twice, and one announcement delivered one of them.
-	 */
-	markUpdateAnnounced(message: string): void {
-		const owed = this._runUpdates.find((update) => !update.announced && update.message === message);
-		if (owed) owed.announced = true;
-	}
-
-	/**
-	 * Reset for resume: clear the update ledger. The rest of the outcome is the
-	 * run's own, so the resume's new run starts without it.
-	 */
-	resetForResume(): void {
-		// The updates belong to the run that produced them, and this starts another.
-		this._runUpdates.length = 0;
 	}
 }

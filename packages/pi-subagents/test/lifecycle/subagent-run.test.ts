@@ -334,6 +334,63 @@ describe("SubagentRun", () => {
 		});
 	});
 
+	describe("run updates", () => {
+		it("starts with none", () => {
+			expect(new SubagentRun("initial", true).runUpdates).toEqual([]);
+		});
+
+		it("keeps the order the child sent them in", () => {
+			const run = runIn("running");
+
+			run.recordUpdate("The bug is in the retry wrapper.");
+			run.recordUpdate("The fixture is stale too.");
+
+			expect(run.runUpdates).toEqual(["The bug is in the retry wrapper.", "The fixture is stale too."]);
+		});
+
+		it("seeds owed updates from init, in order", () => {
+			const run = new SubagentRun("initial", true, { runUpdates: ["First.", "Second."] });
+			expect(run.runUpdates).toEqual(["First.", "Second."]);
+		});
+
+		it("is the run's own: another run starts with none owed", () => {
+			const first = runIn("running");
+			first.recordUpdate("From the first run.");
+			expect(new SubagentRun("resume", true).runUpdates).toEqual([]);
+		});
+
+		describe("the announcement latch", () => {
+			it("omits a message the announcement channel delivered", () => {
+				const run = runIn("running");
+				run.recordUpdate("Announced already.");
+				run.recordUpdate("Still owed to a carrier.");
+
+				run.markUpdateAnnounced("Announced already.");
+
+				expect(run.runUpdates).toEqual(["Still owed to a carrier."]);
+			});
+
+			it("marks the first unannounced copy, leaving a later duplicate owed", () => {
+				const run = runIn("running");
+				run.recordUpdate("Same finding twice.");
+				run.recordUpdate("Same finding twice.");
+
+				run.markUpdateAnnounced("Same finding twice.");
+
+				expect(run.runUpdates).toEqual(["Same finding twice."]);
+			});
+
+			it("ignores a message this run never produced", () => {
+				const run = runIn("running");
+				run.recordUpdate("From this run.");
+
+				run.markUpdateAnnounced("From another run.");
+
+				expect(run.runUpdates).toEqual(["From this run."]);
+			});
+		});
+	});
+
 	describe("question and workspace notice", () => {
 		it("start with none, or what init seeds", () => {
 			expect([new SubagentRun("initial", true).pendingQuestion, new SubagentRun("initial", true).workspaceNotice])

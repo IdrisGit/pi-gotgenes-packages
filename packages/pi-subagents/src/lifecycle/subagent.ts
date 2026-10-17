@@ -168,7 +168,7 @@ export class Subagent {
 	get consumed(): boolean { return this.currentRun.consumed; }
 	get claimed(): boolean { return this.currentRun.claimed; }
 	get pendingQuestion(): string | undefined { return this.currentRun.pendingQuestion; }
-	get runUpdates(): readonly string[] { return this.state.runUpdates; }
+	get runUpdates(): readonly string[] { return this.currentRun.runUpdates; }
 	/**
 	 * What the workspace reported at a teardown with no result text to fold it
 	 * into — the provider's own wording for where the child's work ended up.
@@ -492,7 +492,9 @@ export class Subagent {
 	 * carrier delivers it.
 	 */
 	private announceUpdate(message: string): void {
-		this.state.recordUpdate(message);
+		// The session outlives this run, so an update joins whichever run is under
+		// way when the child sends it.
+		this.currentRun.recordUpdate(message);
 		this.execution.observer?.onUpdateSent?.(this, message);
 	}
 
@@ -584,11 +586,11 @@ export class Subagent {
 	 * started notification has fired, by the time resume() returns.
 	 */
 	private async continueSession(session: SubagentSession, prompt: string, options: ResumeRunOptions): Promise<void> {
-		// Before the reset clears it: a waiter on the outgoing run may still need to
-		// deliver what it ended with.
+		// A waiter on the outgoing run may still need to deliver what it ended with.
 		this.lastReplaced = { run: this.currentRun, outcome: this.settledOutcome() };
-		// After resetForResume, which releases the previous run's handles.
-		this.resetForResume();
+		// The resume is a new run, so nothing the previous run held carries over;
+		// only its handles need releasing.
+		this.currentRun.release();
 		const run = new SubagentRun("resume", options.background);
 		if (options.claimOutcome) run.claim();
 		this.currentRun = run;
@@ -670,7 +672,7 @@ export class Subagent {
 
 	/** The announcement channel delivered this update; no outcome carrier repeats it. */
 	markUpdateAnnounced(message: string): void {
-		this.state.markUpdateAnnounced(message);
+		this.currentRun.markUpdateAnnounced(message);
 	}
 
 	/**
@@ -726,12 +728,6 @@ export class Subagent {
 			this.subagentSession?.steer(msg).catch(() => {});
 		}
 		this._pendingSteers = [];
-	}
-
-	/** Reset for resume: clear what the previous run left on the state; release the previous run. */
-	resetForResume(): void {
-		this.state.resetForResume();
-		this.currentRun.release();
 	}
 
 	/** Complete a run: release its handles, dispose or hold the workspace, status transition, notify observer. */

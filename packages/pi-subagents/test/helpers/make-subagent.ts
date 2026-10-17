@@ -90,7 +90,6 @@ export function createTestSubagent(overrides: TestSubagentOptions = {}): Subagen
 		activeTools: overrides.activeTools,
 		responseText: overrides.responseText,
 	});
-	for (const update of runUpdates ?? []) state.recordUpdate(update);
 	const agent = new Subagent({
 		id: id ?? "agent-1",
 		type: type ?? "general-purpose",
@@ -111,6 +110,7 @@ export function createTestSubagent(overrides: TestSubagentOptions = {}): Subagen
 			pendingQuestion: overrides.pendingQuestion,
 			workspaceNotice: overrides.workspaceNotice,
 			turnBudget: overrides.turnBudget,
+			runUpdates,
 			consumedAt: overrides.consumedAt,
 		},
 	});
