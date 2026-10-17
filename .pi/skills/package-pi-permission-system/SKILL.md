@@ -64,6 +64,8 @@ Run `pnpm --silent fallow guard <file>` before adding a cross-directory import: 
 - Prefer config patterns over new runtime mechanisms.
   Mechanism is forever; docs are reversible.
 - Treat any declared config field not read at runtime as a maintenance trap.
+- A fact that *relieves* an ask (a license, an exemption) is never read off the bash projection, which over-flags by design.
+  Require a positive condition the source proves (the token is the verbatim word bash runs, ADR 0007 §8), and list in the plan the inputs the bound must refuse before the pre-completion reviewer does.
 
 ### Single source of truth for tool policy
 

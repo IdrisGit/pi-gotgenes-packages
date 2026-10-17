@@ -36,6 +36,7 @@ A scripted bulk edit across test files cannot tell a mock **producer** from an *
 That holds only where assertions are exact (`toEqual`/`toHaveBeenCalledWith`).
 A touched `toMatchObject`/`objectContaining` site absorbs a wrong insertion and still passes — re-read those by hand instead of counting the green run as verification.
 Run the full package suite, not the files the rename's own grep matched — a mock *producer* spells the symbol as an object key (`externalPaths:`), which a call-site grep (`\.externalPaths\(`) never sees.
+In a `node -e` substitution, write `s.split(a).join(b)`, never `s.replace(a, b)`: the replacement string interprets `$&`, `` $` ``, and `$'`, so shell prose holding `` $` `` duplicates the text before the match.
 A replacement containing backslashes is a trap even as a single-line rename — shell, perl, and the regex engine each consume an escape level.
 Use `Edit`.
 That includes repairing a literal `\uXXXX` an edit body just wrote: re-edit the region with the character typed literally, never a `perl` substitution whose pattern carries the same escape (Refs #864).
