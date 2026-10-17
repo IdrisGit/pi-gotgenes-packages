@@ -607,22 +607,6 @@ export class Subagent {
 		this.currentRun.markCompleted(result, completedAt);
 	}
 
-	/**
-	 * Transition to aborted state.
-	 * Always sets result and completedAt (??=). Only changes status if not stopped.
-	 */
-	markAborted(result: string, completedAt?: number): void {
-		this.currentRun.markAborted(result, completedAt);
-	}
-
-	/**
-	 * Transition to error state.
-	 * Always sets error (formatted) and completedAt (??=). Only changes status if not stopped.
-	 */
-	markError(error: unknown, completedAt?: number): void {
-		this.currentRun.markError(error, completedAt);
-	}
-
 	/** Transition to stopped state. Always valid — no guard. */
 	markStopped(completedAt?: number): void {
 		this.currentRun.markStopped(completedAt);
