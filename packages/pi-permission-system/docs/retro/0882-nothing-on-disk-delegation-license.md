@@ -54,6 +54,22 @@ The last round returned WARN, with nothing mis-licensed among the inputs it trie
 - Pre-completion reviewer: WARN (round 7), with only an awkward ADR sentence left, since fixed.
   Rounds 1 to 5 FAILed and round 6 WARNed as described above.
 
+## Stage: Sync (worktree) (2026-10-17T22:39:51Z)
+
+### Session summary
+
+Pre-push `pnpm run lint` and `pnpm fallow dead-code` pass on the worktree.
+The plan's `**Release:**` marker is "ship independently" and the behavior commit is `feat(pi-permission-system)!:`, so the root cuts a major for the package at ship time.
+At ship time, also comment on PR [#983] that ADR 0007 amendment 8 decides only the narrow nothing-on-disk bound and the per-link trust map stays parked on [#620] and [#799]; [#684] was already closed by its author.
+
+**Peer session transcript:** `/Users/chris/.pi/agent/sessions/--Users-chris-development-pi-pi-packages-worktrees-issue-882--/2026-10-17T03-36-48-260Z_01a147ef-0183-72af-8ae4-8b1623be9ed4.jsonl`, read with `read_session_file` for message-level verification at land and retro time.
+
+### Observations
+
+- No follow-up issues were filed.
+  The unverified lead from planning (a forwarded bash `external_directory` ask carries only the deciding path's `matchValues`, so the serving node resolves one path of possibly many) was not checked against [#1030]'s "every unit" fix; the license is computed at the asking node over every uncovered path, so it does not depend on the answer.
+- The `/retro` at the root should weigh the seven pre-completion review rounds: five FAILs on one invariant, each a new divergence between the projected token and the word bash runs, ended by replacing an exclusion list with a positive spelling rule.
+
 [#620]: https://github.com/gotgenes/pi-packages/issues/620
 [#684]: https://github.com/gotgenes/pi-packages/pull/684
 [#799]: https://github.com/gotgenes/pi-packages/issues/799
