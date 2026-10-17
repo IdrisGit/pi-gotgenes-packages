@@ -84,12 +84,15 @@ export interface BashExternalPath {
   readonly path: AccessPath;
   readonly effect: TokenEffect;
   /**
-   * Present when the token was relative to a working directory the parse could
-   * not determine (after a non-literal `cd`). `path` is then resolved against
-   * the session cwd for display and matching only; it does not say where the
-   * command reaches, so no filesystem fact may be read from it.
+   * Present when `path` is not where the command reaches, so no filesystem
+   * fact may be read from it: `unknown-base` for a token relative to a working
+   * directory the parse could not determine (after a non-literal `cd`), which
+   * is resolved against the session cwd for display and matching only, and
+   * `shell-expansion` for a token whose spelling the shell rewrites at run time
+   * (a glob, a brace, a parameter or command substitution, an escape), which
+   * is resolved as typed.
    */
-  readonly baseUnknown?: true;
+  readonly unlocated?: Unlocated;
 }
 
 /**
@@ -581,7 +584,13 @@ export class BashPathResolver {
         // decision to whatever it resolves to (#645).
         const probed = this.probeBareToken(token, base);
         if (probed) {
-          this.collectIfExternal(probed.path, effect, seen, externalPaths);
+          this.collectIfExternal(
+            probed.path,
+            effect,
+            seen,
+            externalPaths,
+            locationOfSpelling(token),
+          );
         }
         continue;
       }
@@ -595,7 +604,7 @@ export class BashPathResolver {
         const canonical = accessPath.boundaryValue();
         if (canonical && !isSafeSystemPath(canonical)) {
           recordExternal(accessPath, effect, canonical, seen, externalPaths, {
-            baseUnknown: true,
+            unlocated: "unknown-base",
           });
         }
         continue;
@@ -610,6 +619,7 @@ export class BashPathResolver {
         effect,
         seen,
         externalPaths,
+        locationOfSpelling(token),
       );
     }
 
@@ -637,6 +647,7 @@ export class BashPathResolver {
     effect: TokenEffect,
     seen: Map<string, number>,
     out: BashExternalPath[],
+    location: PathLocation,
   ): void {
     const lexical = accessPath.value();
     if (!lexical) return;
@@ -645,7 +656,14 @@ export class BashPathResolver {
       ? this.normalizer.isBoundaryOutsideWorkingDirectory(canonical)
       : true;
     if (!isExternal) return;
-    recordExternal(accessPath, effect, canonical || lexical, seen, out);
+    recordExternal(
+      accessPath,
+      effect,
+      canonical || lexical,
+      seen,
+      out,
+      location,
+    );
   }
 
   /**
@@ -815,6 +833,30 @@ export class BashPathResolver {
 /** A character that makes the shell expand a word against the filesystem. */
 const GLOB_CHARACTERS = /[*?[]/;
 
+/** Why a path is not where the command reaches; see {@link BashExternalPath}. */
+export type Unlocated = "unknown-base" | "shell-expansion";
+
+/** The location fact {@link recordExternal} stamps on an entry it records. */
+interface PathLocation {
+  readonly unlocated?: Unlocated;
+}
+
+/**
+ * Characters with which a token's spelling asks the shell to rewrite it at run
+ * time: glob (`*`, `?`, `[`), brace (`{`), parameter or command substitution
+ * (`$`, a backtick), and escape (`\`). Quoting can make one literal, and is
+ * not modelled: the fact this feeds only ever withholds, so over-matching a
+ * quoted character costs a prompt and nothing more.
+ */
+const SHELL_EXPANSION_CHARACTERS = /[*?[{$`\\]/;
+
+/** `shell-expansion` when the token's spelling is not the path that runs. */
+function locationOfSpelling(token: string): PathLocation {
+  return SHELL_EXPANSION_CHARACTERS.test(token)
+    ? { unlocated: "shell-expansion" }
+    : {};
+}
+
 /** The key an argument spelling is filed under: its node's source span. */
 function spanKey({ start, end }: SourceSpan): string {
   return `${start}:${end}`;
@@ -884,7 +926,7 @@ function recordExternal(
   dedupKey: string,
   seen: Map<string, number>,
   out: BashExternalPath[],
-  location: { baseUnknown?: true } = {},
+  location: PathLocation,
 ): void {
   const index = seen.get(dedupKey);
   if (index === undefined) {
@@ -895,11 +937,11 @@ function recordExternal(
   // A path any of its tokens reached from an unknown base stays unknown: the
   // merged entry must not read as located because another token was.
   const existing = out[index];
-  const baseUnknown = existing.baseUnknown ?? location.baseUnknown;
+  const unlocated = existing.unlocated ?? location.unlocated;
   out[index] = {
     path: existing.path,
     effect: mergeTokenEffects(existing.effect, effect),
-    ...(baseUnknown ? { baseUnknown } : {}),
+    ...(unlocated ? { unlocated } : {}),
   };
 }
 

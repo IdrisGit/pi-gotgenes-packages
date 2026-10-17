@@ -159,8 +159,8 @@ export function describeBashExternalDirectoryGate(
 
 /**
  * Whether every uncovered path earns the nothing-on-disk delegation license
- * (ADR 0007, amendment 8): located against a known working directory, not a
- * proven write, and naming nothing on disk below the filesystem root. One path
+ * (ADR 0007, amendment 8): located (resolved against a known working directory
+ * from a spelling the shell does not rewrite), not a proven write, and naming nothing on disk below the filesystem root. One path
  * that fails withholds it from the whole ask, since a link's verdict covers
  * the whole command.
  */
@@ -169,8 +169,8 @@ function namesNothingOnDisk(
   normalizer: PathNormalizer,
 ): boolean {
   return entries.every(
-    ({ path, effect, baseUnknown }) =>
-      baseUnknown === undefined &&
+    ({ path, effect, unlocated }) =>
+      unlocated === undefined &&
       effect.effect !== "write" &&
       normalizer.namesNothingBelowRoot(path),
   );

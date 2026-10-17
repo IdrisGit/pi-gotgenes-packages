@@ -236,6 +236,24 @@ describe("describeBashExternalDirectoryGate", () => {
       },
     );
 
+    it.each([
+      ["a glob", "cat /e?c/passwd"],
+      ["a bracket glob", "cat /[e]tc/passwd"],
+      ["a star glob", "cat /*"],
+      ["a brace expansion", "cat /{etc,var}/hosts"],
+      ["a parameter expansion", "cat /$X/passwd"],
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: intentional literal — a braced shell expansion, not a template string
+      ["a quoted braced expansion", 'cat "/${X}c/passwd"'],
+      ["a command substitution", "cat /$(echo etc)/passwd"],
+      ["a backtick substitution", "cat /`echo etc`/passwd"],
+      ["a backslash escape", "cat /e\\tc/passwd"],
+    ])(
+      "withholds it from %s the shell expands to a different path (%s)",
+      async (_, command) => {
+        expect(await licenseOf(command)).toBeUndefined();
+      },
+    );
+
     it("withholds it from a proven write", async () => {
       expect(await licenseOf(`echo x > ${ABSENT_AT_ROOT}/f`)).toBeUndefined();
     });
