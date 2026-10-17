@@ -68,3 +68,45 @@ The follow-up for the repo-wide `#src` alias sweep is filed as #1078.
 
 - `/ship` should confirm `./scripts/release/next-version.sh pi-permission-model-judge` prints nothing rather than dispatch a release.
 - The `build:` commit touches `pnpm-lock.yaml` and `pnpm-workspace.yaml`; a peer landing first with lockfile changes would conflict, and the rebase would stop for the operator.
+
+## Stage: Final Retrospective (2026-10-17T15:50:23Z)
+
+### Session summary
+
+The worktree lane ran four stages: planning, TDD, and sync in one peer session, then ship at the root.
+The ship landed `23c08264` by fast-forward merge, CI passed on its first run, #1077 closed citing `d6c7e721`, and no release was dispatched because `next-version.sh` printed nothing for the judge.
+No stage needed rework: the plan's predictions held at every red, green, and killing mutation, and no stage was re-run.
+
+### Observations
+
+#### What went well
+
+- **Planning measured the real bump and did not trust the issue's prediction.**
+  The issue predicted one TS2741 on the fixture and stated that the fixture was the only code that constructs the type.
+  A first spike typechecked against the downloaded `public.d.ts` through tsconfig `paths`, which can see only compile-time breaks.
+  The real `pnpm add` followed by `vitest run` surfaced the other two: the `makeService()` TS2322 and the runtime `#src` alias collision.
+  Planning cost about 48 tool calls before the single `ask_user` gate, and that up-front measurement is why TDD had zero deviations.
+- **A killing mutation for a config-only `test:` step.**
+  Pointing `package.json`'s `#src/*` at `./lib/*` failed all 7 test files, which proves that the `imports` field (not some leftover alias) is what resolves the specifiers after the alias is removed.
+  That is a reusable shape for any commit that only deletes configuration.
+- **Model routing matched the work.**
+  Planning and TDD ran on `claude-opus-5-5`; sync and both subagents (`tidy-first-assessor`, `pre-completion-reviewer`) ran on `claude-sonnet-5-5`, per their transcripts.
+  Both reviews were correct and independently re-derived their claims (every `#` specifier enumerated; the lockfile grepped for the pruned versions).
+
+#### What caused friction (agent side)
+
+- `other` — the `pre-completion-reviewer` definition hard-codes its valid Conventional Commits types as `feat`, `fix`, `docs`, `test`, `refactor`, `style`, `chore`, `ci`, and says to FAIL any other.
+  `committed.toml`'s `allowed_types` also allows `build`, `perf`, and `revert`, and this issue's `build(pi-permission-model-judge):` commit fell into the gap.
+  The reviewer reasoned past it ("`build` is not in this reviewer's listed valid types, but … I treat it as valid").
+  Impact: no rework, but a literal reading of the definition would have produced a false FAIL on a `build:` commit.
+- `other` — in the ship session, one stray `sleep 1` tool call and a meaningless `[ $? ]` in the merge-and-lint batch.
+  Impact: one wasted call, no rework.
+
+#### What caused friction (user side)
+
+- None.
+  The operator's one involvement was the planning gate (bump Pi to 1.0.0 as well, remove the alias in the judge only, prune the exclude list), which was a strategic decision rather than oversight.
+
+### Changes made
+
+1. `.pi/agents/pre-completion-reviewer.md`: the commit-type check now defers to `committed.toml`'s `allowed_types` instead of its hand-written list of eight types, which omitted `build`, `perf`, and `revert`.
