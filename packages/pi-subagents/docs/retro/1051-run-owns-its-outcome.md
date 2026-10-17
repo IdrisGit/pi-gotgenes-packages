@@ -62,3 +62,19 @@ The `pi-subagents` suite went from 2163 to 2155 tests (state-test blocks deleted
 [#987]: https://github.com/gotgenes/pi-packages/issues/987
 [#1013]: https://github.com/gotgenes/pi-packages/issues/1013
 [#1015]: https://github.com/gotgenes/pi-packages/issues/1015
+
+## Stage: Sync (worktree) (2026-10-17T15:54:06Z)
+
+### Session summary
+
+`pnpm run lint` and `pnpm fallow dead-code` both passed on the branch before the rebase, and the TDD stage's reviewer verdict (round 2 PASS) has no open WARN.
+The plan's `**Release:**` marker reads `ship independently` and its rationale calls the issue refactor-only, but the step 7 commit ("keep a stopped run's late result off the resume that replaced it") landed as `fix:`, so `/ship` should expect a `pi-subagents` patch release rather than none.
+
+**Peer session transcript:** `/Users/chris/.pi/agent/sessions/--Users-chris-development-pi-pi-packages-worktrees-issue-1051--/2026-10-17T03-33-11-157Z_01a147eb-b174-745e-9146-a63537fd3197.jsonl` — read with `read_session_file({ path: "<path>" })` for message-level verification at land/retro time.
+
+### Observations
+
+- Follow-up for the root: [#1058] (withheld notifications crossing a resume) is untouched by this change and still reproduces; it is the natural next `fix:` on top of the per-run object.
+- No deferred work beyond the two deferred tidyings in the Planning stage note.
+
+[#1058]: https://github.com/gotgenes/pi-packages/issues/1058
