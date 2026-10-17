@@ -64,3 +64,17 @@ The pi-subagents suite went from 2155 to 2173 tests (+18).
 - `verify:public-types` passes; `dist/public.d.ts` carries `resume-queued`.
 - Pre-completion reviewer: PASS.
   It re-derived the four invariants from its own inputs: synchronous start, no stale run, no second resume while queued, and every exhaustive reader updated.
+
+## Stage: Sync (worktree) (2026-10-17T23:21:37Z)
+
+### Session summary
+
+`pnpm run lint` and `pnpm fallow dead-code` both pass on the worktree.
+The plan's marker is `**Release:** ship independently`, and the change is breaking: the `fix(pi-subagents)!:` commit ("refuse a second resume while one waits for a concurrency slot") carries a `BREAKING CHANGE:` footer, so `/ship` should dispatch a major release for `pi-subagents`.
+The follow-up #1079 is filed and recorded as a Phase 23 step in the roadmap; it is not part of this land.
+
+**Peer session transcript:** `/Users/chris/.pi/agent/sessions/--Users-chris-development-pi-pi-packages-worktrees-issue-1013--/2026-10-17T16-22-24-668Z_01a14aab-f09b-7398-af19-375f99fc28e9.jsonl` — read with `read_session_file({ path: "<path>" })` for message-level verification at land/retro time.
+
+### Observations
+
+The open question left in the plan (whether decision 0005 should say that widening a field's value union is semver-major) is unfiled and deliberate; the final retro can decide whether to file it.
