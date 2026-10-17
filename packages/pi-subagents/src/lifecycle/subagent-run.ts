@@ -33,6 +33,30 @@ export interface CarrierClaim {
 	release(): void;
 }
 
+/**
+ * What one run ended with, or has so far, as a carrier that holds the run reads
+ * and records it.
+ */
+export interface RunOutcome {
+	readonly status: SubagentStatus;
+	readonly result: string | undefined;
+	readonly error: string | undefined;
+	readonly startedAt: number;
+	readonly completedAt: number | undefined;
+	readonly stoppedWhileQueued: boolean;
+	/** Undefined once a later run replaced this one: the resume that started it is the answer. */
+	readonly pendingQuestion: string | undefined;
+	readonly workspaceNotice: string | undefined;
+	/** The updates no announcement delivered; what the carrier still owes. */
+	readonly runUpdates: readonly string[];
+	/** The run's turn limit and its use; absent when no limit applied. */
+	readonly turnBudget: TurnBudget | undefined;
+	/** A resume replaced this run after it settled. */
+	readonly replaced: boolean;
+	isActive(): boolean;
+	markConsumed(at?: number): void;
+}
+
 /** One update a child sent during a run, and whether an announcement delivered it. */
 interface RunUpdate {
 	message: string;
@@ -61,7 +85,7 @@ export interface RunOutcomeInit {
 }
 
 /** One run of a subagent (the initial run or a resume): its outcome, and the handles it holds until it ends. */
-export class SubagentRun {
+export class SubagentRun implements RunOutcome {
 	private readonly controller = new AbortController();
 	private detachCallerSignal?: () => void;
 	private unsubscribeObserver?: () => void;
@@ -89,8 +113,14 @@ export class SubagentRun {
 
 	// The question this run ended its turn with, if it declared one. Part of the
 	// outcome like _result, and set while the run is under way by ask_parent.
+	// Pending until a resume answers it: the run that resume starts replaces this one.
 	private _pendingQuestion?: string;
-	get pendingQuestion(): string | undefined { return this._pendingQuestion; }
+	get pendingQuestion(): string | undefined { return this._replaced ? undefined : this._pendingQuestion; }
+
+	// Whether a resume has replaced this run. Set once the run has settled and a
+	// resume starts the next one, so a carrier still holding this run can tell.
+	private _replaced = false;
+	get replaced(): boolean { return this._replaced; }
 
 	// What the workspace reported at a teardown with no result text to fold it
 	// into. Part of the outcome like _result, and set at the disposal that
@@ -259,6 +289,11 @@ export class SubagentRun {
 	/** Record what a teardown reported when no result text could carry it. */
 	setWorkspaceNotice(notice: string): void {
 		this._workspaceNotice = notice;
+	}
+
+	/** A resume replaced this run; its prompt is the answer to the question this run ended with. */
+	markReplaced(): void {
+		this._replaced = true;
 	}
 
 	/** Record an update the child sent during this run, owed to a carrier until delivered. */

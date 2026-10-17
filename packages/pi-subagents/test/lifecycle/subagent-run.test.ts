@@ -407,6 +407,20 @@ describe("SubagentRun", () => {
 			expect(run.pendingQuestion).toBeUndefined();
 		});
 
+		it("a replaced run reports no open question: the resume that replaced it is the answer", () => {
+			const run = runIn("completed");
+			run.setPendingQuestion("Which one?");
+
+			run.markReplaced();
+
+			expect([run.replaced, run.pendingQuestion]).toEqual([true, undefined]);
+		});
+
+		it("is not replaced until a resume replaces it", () => {
+			const run = new SubagentRun("initial", true, { pendingQuestion: "Which one?" });
+			expect([run.replaced, run.pendingQuestion]).toEqual([false, "Which one?"]);
+		});
+
 		it("records the workspace notice", () => {
 			const run = runIn("error");
 			run.setWorkspaceNotice("Saved to branch x.");

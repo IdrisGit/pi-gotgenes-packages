@@ -13,9 +13,9 @@ import { debugLog } from "#src/debug";
 import type { CreateSubagentSessionParams } from "#src/lifecycle/create-subagent-session";
 import type { ParentSnapshot } from "#src/lifecycle/parent-snapshot";
 import { subscribeSubagentObserver } from "#src/lifecycle/record-observer";
-import { type CarrierClaim, type RunKind, type RunOutcomeInit, SubagentRun } from "#src/lifecycle/subagent-run";
+import { type CarrierClaim, type RunKind, type RunOutcome, type RunOutcomeInit, SubagentRun } from "#src/lifecycle/subagent-run";
 import type { SubagentSession, TurnLoopResult } from "#src/lifecycle/subagent-session";
-import { type SettledOutcome, SubagentState, type SubagentStatus } from "#src/lifecycle/subagent-state";
+import { SubagentState, type SubagentStatus } from "#src/lifecycle/subagent-state";
 import type { TurnBudget } from "#src/lifecycle/turn-limits";
 import type { LifetimeUsage } from "#src/lifecycle/usage";
 import type { WorkspaceProvider } from "#src/lifecycle/workspace";
@@ -76,17 +76,6 @@ export type SteerOutcome =
 	| { kind: "delivered" }
 	| { kind: "buffered" }
 	| { kind: "rejected"; status: SubagentStatus };
-
-/**
- * What happened to the run a `waitUntilSettled` call waited on: it settled and
- * is still the current run; it has not settled (the wait was interrupted, or
- * there was no run to wait on); or a resume replaced it after it settled,
- * carrying what it ended with.
- */
-export type WaitOutcome =
-	| { kind: "settled" }
-	| { kind: "unsettled" }
-	| { kind: "superseded"; outcome: SettledOutcome };
 
 /**
  * The execution machinery a Subagent needs to run. A single mandatory
@@ -195,12 +184,10 @@ export class Subagent {
 	 */
 	private currentRun: SubagentRun;
 
-	/**
-	 * The run the latest resume replaced and what it ended with, kept for a carrier
-	 * that was waiting on it when the resume began. One slot: a second resume
-	 * during one wait would need the first resumed run to settle inside it.
-	 */
-	private lastReplaced?: { run: SubagentRun; outcome: SettledOutcome };
+	/** The run in flight, or the last one to end, as an outcome carrier reads it. */
+	get latestRun(): RunOutcome {
+		return this.currentRun;
+	}
 
 	/**
 	 * Whether this agent's current run is in the background: the run in flight,
@@ -538,18 +525,17 @@ export class Subagent {
 	 * is a query, so interrupting it must not cancel the work. Cancelling the
 	 * work on a parent interrupt is InterruptHandler's separate decision.
 	 *
-	 * Reports what happened to the run the wait began on. A resume can start
-	 * between that run settling and the waiter continuing (a consumer resuming
-	 * from the completion event does), so a record that reads active afterwards
-	 * is not necessarily the run that was waited on.
+	 * Returns the run the wait began on, whatever happened to it: still active
+	 * when the wait was interrupted (or there was nothing to wait on), settled
+	 * otherwise. A resume can start between that run settling and the waiter
+	 * continuing (a consumer resuming from the completion event does); the
+	 * returned run is then `replaced`, and still reports what it ended with.
 	 */
-	async waitUntilSettled(signal: AbortSignal): Promise<WaitOutcome> {
-		const waitedRun = this.currentRun;
+	async waitUntilSettled(signal: AbortSignal): Promise<RunOutcome> {
+		const run = this.currentRun;
 		const handle = this._promise;
-		if (handle && this.isActive()) await settleOrAbort(handle, signal);
-		const superseded = this.currentRun === waitedRun ? undefined : this.supersededOutcome(waitedRun);
-		if (superseded) return { kind: "superseded", outcome: superseded };
-		return this.isActive() ? { kind: "unsettled" } : { kind: "settled" };
+		if (handle && run.isActive()) await settleOrAbort(handle, signal);
+		return run;
 	}
 
 	/**
@@ -586,11 +572,11 @@ export class Subagent {
 	 * started notification has fired, by the time resume() returns.
 	 */
 	private async continueSession(session: SubagentSession, prompt: string, options: ResumeRunOptions): Promise<void> {
-		// A waiter on the outgoing run may still need to deliver what it ended with.
-		this.lastReplaced = { run: this.currentRun, outcome: this.settledOutcome() };
-		// The resume is a new run, so nothing the previous run held carries over;
-		// only its handles need releasing.
+		// The resume is a new run, so nothing the previous run held carries over:
+		// its handles are released, and it is marked replaced for any carrier that
+		// still holds it.
 		this.currentRun.release();
+		this.currentRun.markReplaced();
 		const run = new SubagentRun("resume", options.background);
 		if (options.claimOutcome) run.claim();
 		this.currentRun = run;
@@ -600,29 +586,6 @@ export class Subagent {
 		if (run.aborted) this.abort();
 		this.execution.observer?.onRunStarted?.(this, run.kind);
 		await this.runOnSession(run, session, prompt);
-	}
-
-	/**
-	 * What `run` ended with, once a resume has replaced it; undefined for the
-	 * current run, and for any run before the most recently replaced one.
-	 */
-	private supersededOutcome(run: SubagentRun): SettledOutcome | undefined {
-		return this.lastReplaced?.run === run ? this.lastReplaced.outcome : undefined;
-	}
-
-	/** The current run's outcome fields, as a carrier renders them. */
-	private settledOutcome(): SettledOutcome {
-		return {
-			status: this.status,
-			result: this.result,
-			error: this.error,
-			startedAt: this.startedAt,
-			completedAt: this.completedAt,
-			pendingQuestion: this.pendingQuestion,
-			workspaceNotice: this.workspaceNotice,
-			runUpdates: this.runUpdates,
-			turnBudget: this.turnBudget,
-		};
 	}
 
 	/**

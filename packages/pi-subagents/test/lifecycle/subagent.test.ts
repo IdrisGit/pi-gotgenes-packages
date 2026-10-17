@@ -1216,14 +1216,16 @@ describe("Subagent", () => {
 	describe("waitUntilSettled()", () => {
 		it("resolves immediately, unsettled, for an agent that has no run handle", async () => {
 			const agent = makeSubagent({ status: "queued" });
-			await expect(agent.waitUntilSettled(new AbortController().signal)).resolves.toEqual({ kind: "unsettled" });
+			const run = await agent.waitUntilSettled(new AbortController().signal);
+			expect([run.status, run.isActive()]).toEqual(["queued", true]);
 		});
 
 		it("resolves immediately for an agent that already left the active set", async () => {
 			const agent = makeSubagent({ status: "completed", result: "done", startedAt: 1, completedAt: 2 });
 			agent.start();
 			await agent.promise;
-			await expect(agent.waitUntilSettled(new AbortController().signal)).resolves.toEqual({ kind: "settled" });
+			const run = await agent.waitUntilSettled(new AbortController().signal);
+			expect([run.status, run.isActive()]).toEqual(["completed", false]);
 		});
 
 		it("spans the queue slot and the run that follows it", async () => {
@@ -1237,7 +1239,8 @@ describe("Subagent", () => {
 			const wait = agent.waitUntilSettled(new AbortController().signal);
 			openSlot();
 
-			await expect(wait).resolves.toEqual({ kind: "settled" });
+			const run = await wait;
+			expect([run.status, run.isActive(), run.replaced]).toEqual(["completed", false, false]);
 			expect(agent.status).toBe("completed");
 		});
 
@@ -1252,7 +1255,7 @@ describe("Subagent", () => {
 
 			const wait = agent.waitUntilSettled(controller.signal);
 			controller.abort();
-			await expect(wait).resolves.toEqual({ kind: "unsettled" });
+			expect((await wait).isActive()).toBe(true);
 
 			// Interrupting the query must not cancel the work: the agent is still
 			// queued and still runs once its slot opens.
@@ -1266,7 +1269,7 @@ describe("Subagent", () => {
 			const agent = makeSubagent({ status: "queued" });
 			agent.scheduleVia(() => new Promise<never>(() => {}));
 
-			await expect(agent.waitUntilSettled(AbortSignal.abort())).resolves.toEqual({ kind: "unsettled" });
+			expect((await agent.waitUntilSettled(AbortSignal.abort())).isActive()).toBe(true);
 
 			expect(agent.status).toBe("queued");
 		});
@@ -1287,16 +1290,15 @@ describe("Subagent", () => {
 			});
 			agent.start();
 
-			const wait = await agent.waitUntilSettled(new AbortController().signal);
+			const run = await agent.waitUntilSettled(new AbortController().signal);
 
-			expect(wait.kind).toBe("superseded");
-			expect(wait.kind === "superseded" ? [wait.outcome.status, wait.outcome.result] : undefined)
-				.toEqual(["completed", "first result"]);
+			expect([run.status, run.result, run.replaced]).toEqual(["completed", "first result", true]);
+			expect(agent.status).toBe("running");
 			resumed.resolve(turnLoopResult({ responseText: "second" }));
 			await agent.promise;
 		});
 
-		it("keeps only the most recently replaced run's outcome", async () => {
+		it("reports the waited run's outcome even when two resumes replaced it", async () => {
 			const stub = createSubagentSessionStub();
 			const third = Promise.withResolvers<TurnLoopResult>();
 			stub.runTurnLoop
@@ -1313,11 +1315,12 @@ describe("Subagent", () => {
 			});
 			agent.start();
 
-			const wait = await agent.waitUntilSettled(new AbortController().signal);
+			const run = await agent.waitUntilSettled(new AbortController().signal);
 
-			// The slot holds the second run; the first, the one waited on, is gone.
+			// The waiter holds the first run, whatever ran after it.
 			expect(stub.runTurnLoop).toHaveBeenCalledTimes(3);
-			expect([wait.kind, agent.status]).toEqual(["unsettled", "running"]);
+			expect([run.status, run.result, run.replaced, agent.status])
+				.toEqual(["completed", "first result", true, "running"]);
 			third.resolve(turnLoopResult({ responseText: "third" }));
 			await agent.promise;
 		});

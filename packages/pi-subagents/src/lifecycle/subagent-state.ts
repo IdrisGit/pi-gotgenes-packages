@@ -18,7 +18,6 @@
  * session-event observer be unit-tested without constructing an executor.
  */
 
-import type { TurnBudget } from "#src/lifecycle/turn-limits";
 import type { LifetimeUsage } from "#src/lifecycle/usage";
 import { addUsage } from "#src/lifecycle/usage";
 
@@ -29,21 +28,6 @@ export type SubagentStatus =
 	| "aborted"
 	| "stopped"
 	| "error";
-
-/** What a settled run ended with: the fields an outcome carrier renders. */
-export interface SettledOutcome {
-	status: SubagentStatus;
-	result: string | undefined;
-	error: string | undefined;
-	startedAt: number;
-	completedAt: number | undefined;
-	pendingQuestion: string | undefined;
-	workspaceNotice: string | undefined;
-	/** The updates no announcement delivered; what the carrier still owes. */
-	runUpdates: readonly string[];
-	/** The run's turn limit and its use; absent when no limit applied. */
-	turnBudget?: TurnBudget;
-}
 
 // ---- Status classification predicates ----
 // The single decision point for the re-derived status groupings. Instance
