@@ -4,6 +4,7 @@ import { ConcurrencyLimiter } from "#src/lifecycle/concurrency-limiter";
 import type { CreateSubagentSessionParams } from "#src/lifecycle/create-subagent-session";
 import type { AgentSpawnConfig } from "#src/lifecycle/subagent-manager";
 import { resolveRetentionWindow, SubagentManager, type SubagentManagerObserver } from "#src/lifecycle/subagent-manager";
+import type { RunKind } from "#src/lifecycle/subagent-run";
 import type { SubagentSession, TurnLoopResult } from "#src/lifecycle/subagent-session";
 import type { WorkspaceProvider } from "#src/lifecycle/workspace";
 import { NotificationManager } from "#src/observation/notification";
@@ -600,6 +601,133 @@ describe("SubagentManager", () => {
 
         expect(notificationsFor(queued)).toHaveLength(1);
         expect(factory).toHaveBeenCalledOnce();
+      });
+    });
+
+    describe("a background resume", () => {
+      let manager: SubagentManager;
+
+      afterEach(async () => {
+        await manager.dispose();
+      });
+
+      /**
+       * At a limit of 1: agent X settles its first run, then a holder spawn whose
+       * turn loop stays open until releaseHolder() takes the only slot.
+       */
+      async function arrangeResumeAtCapacity(observer?: Partial<SubagentManagerObserver>) {
+        const holderLoop = Promise.withResolvers<TurnLoopResult>();
+        const stubs: Array<ReturnType<typeof createSubagentSessionStub>> = [];
+        const factory: SessionFactory = vi.fn(async () => {
+          const stub = createSubagentSessionStub();
+          if (stubs.length === 1) stub.runTurnLoop.mockReturnValue(holderLoop.promise);
+          stubs.push(stub);
+          return toSubagentSession(stub);
+        });
+        ({ manager } = createManager({ createSubagentSession: factory, getMaxConcurrent: () => 1, observer }));
+        const x = spawnBg(manager, "x");
+        await manager.getRecord(x)!.promise;
+        const xStub = stubs[0];
+        xStub.runTurnLoop.mockResolvedValue(turnLoopResult({ responseText: "resumed" }));
+        const holder = spawnBg(manager, "holder");
+        // X's slot frees a microtask after its promise resolves.
+        await vi.waitFor(() => expect(manager.getRecord(holder)!.status).toBe("running"));
+        return {
+          x,
+          xStub,
+          holder,
+          releaseHolder: () => holderLoop.resolve(turnLoopResult({ responseText: "held" })),
+        };
+      }
+
+      it("queues at capacity and starts when the slot frees", async () => {
+        const { x, xStub, holder, releaseHolder } = await arrangeResumeAtCapacity();
+
+        const start = manager.startResume(x, "continue", { background: true });
+
+        expect(start).toEqual({ kind: "started", record: manager.getRecord(x) });
+        expect(manager.getRecord(x)!.status).toBe("queued");
+        expect(xStub.runTurnLoop).toHaveBeenCalledOnce();
+
+        releaseHolder();
+        await manager.getRecord(holder)!.promise;
+        await manager.getRecord(x)!.promise;
+
+        expect(xStub.runTurnLoop).toHaveBeenLastCalledWith("continue", expect.anything());
+        expect([manager.getRecord(x)!.status, manager.getRecord(x)!.result]).toEqual(["completed", "resumed"]);
+      });
+
+      it("starts a foreground resume at capacity, as a foreground spawn does", async () => {
+        const { x, releaseHolder } = await arrangeResumeAtCapacity();
+
+        manager.startResume(x, "continue", { background: false, claimOutcome: true });
+
+        expect(manager.getRecord(x)!.status).toBe("running");
+        releaseHolder();
+        await manager.getRecord(x)!.promise;
+      });
+
+      it("refuses a second resume while the first waits", async () => {
+        const { x, releaseHolder } = await arrangeResumeAtCapacity();
+        manager.startResume(x, "first answer", { background: true });
+
+        expect(manager.startResume(x, "second answer", { background: true })).toEqual({
+          kind: "refused",
+          reason: "resume-queued",
+        });
+        releaseHolder();
+      });
+
+      it("stops a queued resume as a resume, once, without running it", async () => {
+        const finished: Array<[string, RunKind]> = [];
+        const { x, xStub, holder, releaseHolder } = await arrangeResumeAtCapacity({
+          onSubagentRunFinished: (record, kind) => finished.push([record.id, kind]),
+        });
+        manager.startResume(x, "continue", { background: true });
+
+        expect(manager.abort(x)).toBe(true);
+
+        const xFinishes = () => finished.filter(([id]) => id === x);
+        expect(xFinishes()).toEqual([[x, "initial"], [x, "resume"]]);
+        expect([manager.getRecord(x)!.status, manager.getRecord(x)!.stoppedWhileQueued]).toEqual(["stopped", true]);
+
+        releaseHolder();
+        await manager.getRecord(holder)!.promise;
+        await manager.getRecord(x)!.promise;
+
+        expect(xStub.runTurnLoop).toHaveBeenCalledOnce();
+        expect(xFinishes()).toHaveLength(2);
+      });
+
+      it("stops a queued resume as a resume on abortAll", async () => {
+        const finished: Array<[string, RunKind]> = [];
+        const { x } = await arrangeResumeAtCapacity({
+          onSubagentRunFinished: (record, kind) => finished.push([record.id, kind]),
+        });
+        manager.startResume(x, "continue", { background: true });
+
+        manager.abortAll();
+
+        expect(finished.filter(([id]) => id === x)).toEqual([[x, "initial"], [x, "resume"]]);
+        expect(manager.getRecord(x)!.status).toBe("stopped");
+      });
+
+      it("keeps the waiting door pending through the queue, then resolves with the resumed run", async () => {
+        const { x, releaseHolder } = await arrangeResumeAtCapacity();
+        let settled = false;
+
+        const resumed = manager.resume(x, "continue", { background: true }).then((outcome) => {
+          settled = true;
+          return outcome;
+        });
+        await vi.waitFor(() => expect(manager.getRecord(x)!.status).toBe("queued"));
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        expect(settled).toBe(false);
+
+        releaseHolder();
+
+        expect(await resumed).toEqual({ kind: "resumed", record: manager.getRecord(x) });
+        expect(manager.getRecord(x)!.status).toBe("completed");
       });
     });
   });

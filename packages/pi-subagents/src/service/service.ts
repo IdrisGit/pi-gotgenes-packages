@@ -153,6 +153,10 @@ export interface SubagentsService {
   /**
    * Resume a settled agent with a new prompt, continuing its session.
    *
+   * The resume runs in the background, so like a background spawn it waits for
+   * a concurrency slot when `maxConcurrent` background runs are live, reading
+   * `queued` until one frees.
+   *
    * Resolves when the resumed run reaches a terminal state, carrying the
    * terminal snapshot — a caller that does not need the outcome can ignore the
    * promise. A refusal resolves promptly instead: the checks are synchronous

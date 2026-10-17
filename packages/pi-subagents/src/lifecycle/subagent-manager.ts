@@ -1,9 +1,10 @@
 /**
  * subagent-manager.ts - Tracks subagents, background execution, resume support.
  *
- * Background agents are subject to a configurable concurrency limit (default: 4).
- * Excess agents are scheduled on a ConcurrencyLimiter and auto-started as running
- * agents complete. Foreground agents bypass the limiter (they block the parent anyway).
+ * Background runs, spawned or resumed, are subject to a configurable concurrency
+ * limit (default: 4). Excess runs are scheduled on a ConcurrencyLimiter and
+ * auto-started as running ones complete. Foreground runs bypass the limiter
+ * (they block the parent anyway).
  */
 
 import { randomUUID } from "node:crypto";
@@ -16,6 +17,7 @@ import type { ParentSnapshot } from "#src/lifecycle/parent-snapshot";
 import {
   type ResumeRefusal,
   type ResumeRunOptions,
+  type RunScheduler,
   Subagent,
   type SubagentLifecycleObserver,
 } from "#src/lifecycle/subagent";
@@ -56,8 +58,8 @@ export type ResumeOutcome =
   | { kind: "refused"; reason: ResumeRefusalReason };
 
 /**
- * What starting a resume produced: the record now running it, or the reason
- * nothing was started.
+ * What starting a resume produced: the record now running it (or queued for a
+ * concurrency slot, which its status says), or the reason nothing was started.
  *
  * The run itself continues on the record; its `promise` settles when the
  * resumed run reaches a terminal state.
@@ -211,6 +213,8 @@ export class SubagentManager {
   private readonly observer?: SubagentManagerObserver;
   private readonly createSubagentSession: (params: CreateSubagentSessionParams) => Promise<SubagentSession>;
   private readonly limiter: ConcurrencyLimiter;
+  /** Background runs, spawned or resumed, wait for and hold a slot on the limiter. */
+  private readonly admitBackground: RunScheduler = (thunk) => this.limiter.schedule(thunk);
   private readonly baseCwd: string;
   private getRunConfig?: () => RunConfig;
   private getRetentionPolicy?: () => RetentionPolicy;
@@ -379,7 +383,7 @@ export class SubagentManager {
       // Schedule on the limiter — scheduleVia captures the limiter promise
       // eagerly, so a queued agent is awaitable from spawn; guardedRun guards
       // against abort-while-queued when the slot frees.
-      record.scheduleVia((thunk) => this.limiter.schedule(thunk));
+      record.scheduleVia(this.admitBackground);
       return id;
     }
 
@@ -394,6 +398,9 @@ export class SubagentManager {
    * declines the same resumes for the same reasons; a door owns only how it
    * words the answer. Delegates to Subagent.resume(), which owns the observer
    * subscription lifecycle.
+   *
+   * Resolves when the resumed run reaches a terminal state, so a background
+   * resume's wait spans any time it spends queued for a concurrency slot.
    */
   async resume(id: string, prompt: string, options: ResumeCallOptions): Promise<ResumeOutcome> {
     const start = this.startResume(id, prompt, options);
@@ -404,7 +411,11 @@ export class SubagentManager {
 
   /**
    * Start a resume without waiting for it, handing back the record now running
-   * it. Refuses synchronously, for the same reasons `resume` does.
+   * it, or queued for a concurrency slot when it is a background resume and the
+   * limit is reached. Refuses synchronously, for the same reasons `resume` does.
+   *
+   * A background resume is admitted through the limiter like a background
+   * spawn; a foreground one starts at once, like a foreground spawn.
    */
   startResume(id: string, prompt: string, options: ResumeCallOptions): ResumeStart {
     const agent = this.agents.get(id);
@@ -416,11 +427,15 @@ export class SubagentManager {
     // carriers held the runs before it.
     // Published as agent.promise, which always resolves; it rejects only for a
     // missing session, which resumeRefusal has already refused as no-session.
-    void agent.resume(prompt, {
-      background: options.background,
-      signal: options.signal,
-      claimOutcome: options.claimOutcome,
-    });
+    void agent.resume(
+      prompt,
+      {
+        background: options.background,
+        signal: options.signal,
+        claimOutcome: options.claimOutcome,
+      },
+      options.background ? this.admitBackground : undefined,
+    );
     return { kind: "started", record: agent };
   }
 
