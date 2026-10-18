@@ -40,4 +40,17 @@ The pi-subagents suite went from 2173 to 2179 tests (+6), and check, root lint, 
   Its one finding: `architecture.md` line ~962 still describes the queued `No output.` body, but that is the Phase 23 sweep disposition explaining why this issue was filed, i.e. historical context, so it was left as is.
   The reviewer independently confirmed that only `get_subagent_result` can observe a queued run.
 
+## Stage: Sync (worktree) (2026-10-18T15:51:41Z)
+
+### Session summary
+
+Pre-push `pnpm run lint` and `pnpm fallow dead-code` passed from the worktree root.
+The plan's marker is `**Release:** ship independently`, with two `fix(pi-subagents):` commits (a patch); [#1080] (the queued agent's `Duration` stat) is filed and recorded as the next Phase 23 step, so it is not part of this land.
+
+**Peer session transcript:** `/Users/chris/.pi/agent/sessions/--Users-chris-development-pi-pi-packages-worktrees-issue-1079--/2026-10-18T03-24-10-047Z_01a14d09-cbbe-70f9-ab6f-e6cb08c56636.jsonl` — read with `read_session_file({ path: "<path>" })` for message-level verification at land/retro time.
+
+### Observations
+
+- The one open item from the TDD stage (the reviewer's WARN on the historical sweep line in `architecture.md`) was settled there as non-blocking; nothing is carried to `/ship`.
+
 [#1080]: https://github.com/gotgenes/pi-packages/issues/1080
