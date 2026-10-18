@@ -53,4 +53,46 @@ The plan's marker is `**Release:** ship independently`, with two `fix(pi-subagen
 
 - The one open item from the TDD stage (the reviewer's WARN on the historical sweep line in `architecture.md`) was settled there as non-blocking; nothing is carried to `/ship`.
 
+## Stage: Final Retrospective (2026-10-18T16:26:58Z)
+
+### Session summary
+
+The worktree lane ran end to end with no rework: planning, TDD, and sync in one peer session, then a clean fast-forward land, a green CI run, and the `pi-subagents-v25.0.1` release from the root.
+The fix covers the queued body and the queued bounded-wait note; the queued `Duration` stat is [#1080], the next Phase 23 step.
+
+### Observations
+
+#### What went well
+
+- The planning spike drove the real `GetResultTool.execute` instead of a renderer unit, and so surfaced three queued misstatements where the issue named one; the operator could scope all three at one gate.
+- The `createTestSubagent` false-green was caught twice independently: the spike's first run rendered `All done.` for a queued agent, and the `tidy-first-assessor` flagged the same `result`/`completedAt` defaults (`make-subagent.ts:105`) without being told.
+  The plan's `not.toContain("No output.")` assertions came from that.
+- The planned killing mutations each turned exactly the predicted tests red, and the inverted-branch mutation proved the existing `EXPIRY_NOTE` tests pin the running note byte for byte.
+- In sync, an em-dash arrived as a literal `\\u2014` escape in an `Edit` body; `pi-autoformat` decoded it and `unicode-escapes.mjs` confirmed the file clean, so the escape gate caught a real slip with zero rework.
+
+#### What caused friction (agent side)
+
+- `instruction-violation` — In `/ship` step 9 I passed the close comment to `issue_close` without first running the `git rev-parse <sha>^{commit}` / `git merge-base --is-ancestor <sha> main` re-check the step requires (self-identified at retro).
+  The three SHAs were pasted from a `git log 91854988..HEAD` taken after the ff-merge, so each was reachable from `main` by construction, and `issue_close` itself resolved them.
+  Impact: none; the published SHAs are correct.
+- `other` — The TDD stage's `&& false` mutation tripped `pi-autoformat`'s Biome `noConstantCondition` diagnostic.
+  Impact: one line of noise; the vitest run was still valid.
+- `other` — One `Edit` in TDD step 3 (`get-result-report.ts`) failed to match and needed a re-read before the retry.
+  Impact: one extra tool call.
+
+#### What caused friction (user side)
+
+- None observed; the operator's two gates (scope plus wording, and the #1080 roadmap disposition) were answered once each and were strategic decisions, not mechanical oversight.
+
+### Diagnostic details
+
+- **Model-performance correlation** — Planning and TDD ran on `anthropic/claude-opus-5-5` (thinking high), which fit the judgment-heavy scoping and mutation design.
+  Sync switched to `anthropic/claude-sonnet-5-5`, appropriate for its mechanical checks and rebase.
+  Both subagents (`tidy-first-assessor`, `pre-completion-reviewer`) ran on `anthropic/claude-sonnet-5-5` per their transcripts, and both produced verified, file-cited findings (the assessor's false-green flag, the reviewer's call-site enumeration), so no mismatch.
+- **Feedback-loop gap analysis** — No gap: TDD ran the targeted vitest files after every red, green, and mutation, `check` per step, and the full suite, lint, and `fallow` at the end; `/ship` re-ran lint and `fallow` on the merged tree before pushing.
+
+### Changes made
+
+1. `.pi/skills/package-pi-subagents/SKILL.md` — `## Testing` now names `createTestSubagent`'s `result`/`completedAt` defaults and says a `queued` or `running` fixture passes both as `undefined`.
+
 [#1080]: https://github.com/gotgenes/pi-packages/issues/1080

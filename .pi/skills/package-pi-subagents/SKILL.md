@@ -198,6 +198,7 @@ All tests must pass before publishing.
 Use `vi.hoisted(...)` for module-level mocks, matching the existing patterns in `test/lifecycle/subagent-session.test.ts`.
 Tests that mount Pi's per-entry interactive components (`UserMessageComponent`, `ToolExecutionComponent`, etc., used by `session-navigator.ts`) must call `initTheme(undefined, false)` in `beforeAll` — they read a global theme Pi initializes at startup.
 The dependency is component-specific: `AssistantMessageComponent` alone does not trip it, so a one-variant probe gives false confidence.
+`createTestSubagent` defaults `result` to `"All done."` and `completedAt` to `2000`; a fixture for a `queued` or `running` agent passes both as `undefined`, or it renders as a finished run.
 
 ## Notes for Agents
 
