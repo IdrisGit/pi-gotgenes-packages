@@ -303,6 +303,28 @@ describe("formatAgentReport", () => {
 					"Full transcript available at: /tasks/agent.jsonl",
 			);
 		});
+
+		it("says a queued agent has not started and that waiting again is how to collect it", () => {
+			const text = formatAgentReport(
+				makeReport({
+					status: "queued",
+					result: undefined,
+					duration: "130.0s (running)",
+					waitExpiredAfter: 120,
+				}),
+			);
+			expect(text).toBe(
+				"Agent: agent-1\n" +
+					"Type: General | Status: queued | Tool uses: 3 | Duration: 130.0s (running)\n" +
+					"Description: Investigate the bug\n\n" +
+					"Agent is queued and has not started; it is waiting for a concurrency slot (maxConcurrent). " +
+					"Use wait: true or check back later.\n\n" +
+					"This wait ended after its 120s timeout. The agent was not stopped and is still queued: " +
+					"it has not started, and starts when a running agent finishes and frees a concurrency slot.\n" +
+					"Waiting again is how to collect its result; if the running agents are not making progress, " +
+					"check on them instead.",
+			);
+		});
 	});
 
 	describe("an agent resumed while the call waited", () => {

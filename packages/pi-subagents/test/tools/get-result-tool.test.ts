@@ -575,6 +575,26 @@ describe("GetResultTool — bounded wait", () => {
 		await record.promise;
 	});
 
+	it("returns at the bound with a queued agent still queued, saying waiting again is how to collect it", async () => {
+		// The slot never opens, so the gate holds no timer past the bound.
+		const { record, manager } = queuedAgent();
+
+		const resultPromise = execute(manager, { agent_id: "agent-1", wait: true, timeout: 120 });
+		await vi.advanceTimersByTimeAsync(120_000);
+		const text = textOf(await resultPromise);
+
+		expect(text).toContain(
+			"This wait ended after its 120s timeout. The agent was not stopped and is still queued: " +
+				"it has not started, and starts when a running agent finishes and frees a concurrency slot.\n" +
+				"Waiting again is how to collect its result",
+		);
+		expect(text).not.toContain(EXPIRY_NOTE);
+		expect(text).not.toContain("No output.");
+		expect(record.status).toBe("queued");
+		expect(record.claimed).toBe(false);
+		expect(record.consumed).toBe(false);
+	});
+
 	it("keeps waiting until the bound", async () => {
 		const { record, finish, manager } = await stalledAgent();
 		let returned = false;
