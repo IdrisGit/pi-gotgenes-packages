@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [25.0.1](https://github.com/gotgenes/pi-packages/compare/pi-subagents-v25.0.0...pi-subagents-v25.0.1) (2026-10-18)
+
+
+### Bug Fixes
+
+* **pi-subagents:** say a queued agent has not started instead of "No output." ([b07e281](https://github.com/gotgenes/pi-packages/commit/b07e2812bc60414a1bf95e50f51dd255aa846061)), closes [#1079](https://github.com/gotgenes/pi-packages/issues/1079)
+* **pi-subagents:** tell a parent whose wait expired on a queued agent that waiting again is how to collect it ([33fbc53](https://github.com/gotgenes/pi-packages/commit/33fbc534c5a943cc3d4bab3ab03794684af34e30)), closes [#1079](https://github.com/gotgenes/pi-packages/issues/1079)
+
 ## [25.0.0](https://github.com/gotgenes/pi-packages/compare/pi-subagents-v24.0.1...pi-subagents-v25.0.0) (2026-10-17)
 
 
