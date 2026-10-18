@@ -37,20 +37,31 @@ async function execute(
 	return tool.execute("tc-1", params, signal, undefined, STUB_CTX);
 }
 
+/**
+ * An agent waiting on a concurrency slot that opens only when the test calls
+ * `openSlot`. `result` and `completedAt` are unset, as on a real queued run:
+ * the fixture defaults would render a finished agent's output instead.
+ */
+function queuedAgent(responseText = "Done.") {
+	const sessionStub = createSubagentSessionStub();
+	sessionStub.runTurnLoop.mockResolvedValue(turnLoopResult({ responseText }));
+	const record = createTestSubagent({
+		status: "queued",
+		result: undefined,
+		completedAt: undefined,
+		execution: makeStubExecution({
+			createSubagentSession: async () => toSubagentSession(sessionStub),
+		}),
+	});
+	const { schedule, openSlot } = gatedScheduler();
+	record.scheduleVia(schedule);
+	return { record, openSlot, manager: makeManager(new Map([["agent-1", record]])) };
+}
+
 describe("GetResultTool — carrier claim", () => {
 	it("claims the outcome for the duration of a wait", async () => {
-		const sessionStub = createSubagentSessionStub();
-		sessionStub.runTurnLoop.mockResolvedValue(turnLoopResult({ responseText: "Done." }));
-		const record = createTestSubagent({
-			status: "queued",
-			completedAt: undefined,
-			execution: makeStubExecution({
-				createSubagentSession: async () => toSubagentSession(sessionStub),
-			}),
-		});
-		const { schedule, openSlot } = gatedScheduler();
-		record.scheduleVia(schedule);
-		const resultPromise = execute(makeManager(new Map([["agent-1", record]])), {
+		const { record, openSlot, manager } = queuedAgent();
+		const resultPromise = execute(manager, {
 			agent_id: "agent-1",
 			wait: true,
 		});
@@ -405,21 +416,10 @@ describe("GetResultTool", () => {
 	});
 
 	it("waits for a queued agent when wait=true", async () => {
-		const sessionStub = createSubagentSessionStub();
-		sessionStub.runTurnLoop.mockResolvedValue(turnLoopResult({ responseText: "Finished after the queue." }));
-		const record = createTestSubagent({
-			status: "queued",
-			completedAt: undefined,
-			execution: makeStubExecution({
-				createSubagentSession: async () => toSubagentSession(sessionStub),
-			}),
-		});
 		// The limiter admits the agent only after the parent has begun waiting.
-		const { schedule, openSlot } = gatedScheduler();
-		record.scheduleVia(schedule);
-		const records = new Map([["agent-1", record]]);
+		const { record, openSlot, manager } = queuedAgent("Finished after the queue.");
 
-		const resultPromise = execute(makeManager(records), { agent_id: "agent-1", wait: true });
+		const resultPromise = execute(manager, { agent_id: "agent-1", wait: true });
 		openSlot();
 
 		const result = await resultPromise;
