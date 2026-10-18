@@ -78,3 +78,63 @@ The follow-up #1079 is filed and recorded as a Phase 23 step in the roadmap; it 
 ### Observations
 
 The open question left in the plan (whether decision 0005 should say that widening a field's value union is semver-major) is unfiled and deliberate; the final retro can decide whether to file it.
+
+## Stage: Final Retrospective (2026-10-18T01:01:50Z)
+
+### Session summary
+
+The issue ran in one peer worktree session (planning, TDD, sync), and then `/ship` at the root landed it.
+The ship fast-forwarded 14 commits, passed root lint, `fallow dead-code` and CI, closed #1013, and released `pi-subagents-v25.0.0` as a major because of the `resume-queued` refusal.
+The run was clean: no stage reworked a prior stage's output, and every deviation was caught by the stage that caused it.
+
+### Observations
+
+#### What went well
+
+- The `tidy-first-assessor` found a correctness hazard, not just tidyings.
+  A resume thunk guarded on the record's `isActive()` would start a stopped queued resume as a second turn loop once the agent was resumed again.
+  The plan pinned it as step 3 test (d), and the pre-completion reviewer re-derived the same invariant independently.
+- The plan named a killing mutation for every step, and running them caught a weak test.
+  Test (d) as first written survived the "guard on the record" mutation because it opened the stale slot after the replacement run had settled.
+  The rewrite opens it while the replacement is live, and the mutation then fails with an assertion.
+- `/sync-worktree`'s dangling-SHA scan worked as designed.
+  The planning note cited the #1079 disposition commit by SHA, the rebase rewrote it, and the scan caught it before the land.
+- The planning gate priced the `resume-queued` option as breaking before the operator chose it, so the `fix!:` footer and the major release were settled at plan time, with no surprise at ship.
+
+#### What caused friction (agent side)
+
+- `other` — In planning, `pi-autoformat` reflowed a two-sentence parenthetical in the plan.
+  It joined the line opening with `(The initial run's` onto the previous sentence and split the parenthetical at its inner period, leaving `It stays as is.)` on its own line.
+  Impact: one re-read and one corrective `Edit`, no rework.
+- `instruction-violation` (self-identified, by the tool) — In TDD step 1, a scripted substitution ran as `cd packages/pi-subagents && python3 …`; the permission rule denied it, and the retry used repo-root paths.
+  Impact: one rejected call.
+- `other` — In TDD step 7, the ESLint pre-commit auto-fix removed a `!` on `stubs[0]` and rejected the commit; the step had run `check` and tests but not lint.
+  Impact: one re-stage and re-commit.
+- `other` — In planning, the retro note cited the disposition commit by its pre-rebase SHA; `/sync-worktree` step 3 bans SHAs only in its own note, so the planning note was free to write one.
+  Impact: one extra `docs(retro):` commit at sync; `/sync-worktree` step 5 says "amend", and the peer made a new commit instead, which was harmless.
+- `instruction-violation` (self-identified, at retro) — `/ship` step 9 asks to grep the entry points the close comment names; I took `SubagentsService.resume()` and `run_in_background: true` from the commit bodies and stage notes instead.
+  Both are correct as spelled (verified at retro: `SubagentsService` in `src/service/service.ts`).
+  Impact: none.
+- `other` — `/ship`'s final report said "I did not check whether this was the last step of Phase 23" and then answered the question in the next sentence.
+  Impact: a confusing report line, no rework.
+
+#### What caused friction (user side)
+
+- Nothing noted.
+  The operator's two gate decisions (every background resume queues; a new `resume-queued` member) were made with full substance up front and were not revisited.
+
+### Diagnostic details
+
+- **Model-performance correlation** — Planning and TDD ran on `anthropic/claude-opus-5-5` (thinking high); sync and this ship ran on `anthropic/claude-sonnet-5-5`.
+  Both subagents ran on `anthropic/claude-sonnet-5-5` (from their own transcripts): the `tidy-first-assessor` delivered the double-run hazard, and the `pre-completion-reviewer` re-derived four invariants and rendered all Mermaid charts.
+  No mismatch: the judgment-heavy main-line work had the stronger model, and the mechanical sync had the cheaper one.
+- **Feedback-loop gap analysis** — TDD ran the targeted Vitest file and `pnpm --filter @gotgenes/pi-subagents run check` after every step, and the root `lint` only at the end; the one late catch (the ESLint `!` fix) cost a single re-commit, so the cadence was proportionate.
+
+### Decisions
+
+- The decision-0005 question (whether widening a public field's value union is semver-major) is not filed, by operator decision.
+  The `git-workflow` skill's "a type reachable from the published declaration bundle is as breaking as a named export" already let planning price `resume-queued` as breaking without the ADR.
+
+### Changes made
+
+1. `.pi/skills/markdown-conventions/SKILL.md` — added a `pi-autoformat` reflow quirk: a sentence opening with `(` is joined onto the previous line, and a parenthetical is split at any sentence end inside it.
