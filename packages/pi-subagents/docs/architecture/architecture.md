@@ -960,6 +960,8 @@ End-of-planning `src/` totals: 12,420 LOC across 73 files, 2,065 tests across 85
   The rest is named as the leading candidate for Phase 24, a craftsmanship lean phase if it still stands at that discovery, rather than re-deferred to a boy-scout path that has not reduced it: `settings.ts` `sanitize()` range-check triplication, `index.ts`'s untested inline `createSession` lambda, `sendMessage.mock.calls[0][0]` in `notification.test.ts` (6 sites), the `createManager()` observer defaults, and the five `src/` functions over 60 lines (`index.ts`'s default export, `createSubagentSession`, `toToolDefinition`, `runForeground`, and `resolveSpawnConfig`).
 - [#1079] — filed by [#1013]'s planning; becomes a new step after [#1013] (operator decision).
   A queued agent's `get_subagent_result` body falls through to `No output.`; queued spawns already reach it, and [#1013] makes a background resume reach it too.
+- [#1080] — filed by [#1079]'s planning; becomes a new step after [#1079] (operator decision).
+  The same report's `Duration` stat reads a queued run's time since spawn as `(running)`; [#1079] fixes the body and the bounded-wait note and leaves the stat to this step.
 
 #### Deferred tidyings swept
 
@@ -1141,6 +1143,20 @@ Release: independent
 
 Release: independent
 
+#### [#1080] A queued agent's report does not call its wait running time
+
+**Cause:** the report's `Duration` stat does not distinguish a run waiting on a concurrency slot from a running one.
+`GetResultTool.buildReport` renders it with `formatDuration(startedAt, completedAt)`, which appends `(running)` whenever `completedAt` is unset, and a run's `startedAt` is its construction time until the limiter admits it.
+
+- **Smell:** Category C (a status a carrier's stat does not distinguish).
+- **Target:** `src/tools/get-result-tool.ts` (`buildReport`, `buildGetResultDetails`) and its tests; `formatDuration` in `src/ui/display.ts` is shared, so the call site is the likelier home.
+- **Soft dependency:** [#1079] — the same report's body and bounded-wait note learn the queued state first.
+- **Outcome:** a queued agent's report does not label its time in the queue as running time; pinned.
+- **Commit type:** `fix:`.
+- **Impact 1 / Risk 1 / Priority 5.**
+
+Release: independent
+
 #### ✅ [#912] Let a consumer ask whether an agent is resumable
 
 **Cause:** the query surface cannot report a decision the core already makes.
@@ -1189,6 +1205,7 @@ flowchart TD
     S1051 -.soft.-> S1013
     S1012 -.soft.-> S1013
     S1013 -.soft.-> S1079["#1079<br/>Queued report body"]
+    S1079 -.soft.-> S1080["#1080<br/>Queued report duration"]
     S1017["#1017<br/>Drop pre-0.86 arms"]
 ```
 
@@ -1207,8 +1224,8 @@ Every Track A step rewrites `lifecycle/subagent.ts`, so those steps sequence rat
 
 ### Release batches
 
-- Independently releasable: [#947], [#1048], [#1049], [#1050], [#1012], [#1051], [#1013], [#1079], [#912], [#1017].
-- Release vehicles: [#947] (`feat:` or `fix:`, decided at plan time), [#1049] (`fix:` for [#949]), [#1050] (`fix:` for the resume's workspace rule), [#1012] (`fix!:`), [#1051] (`fix:` for a stopped run's late result landing on its resume), [#1013] (`fix!:` for the `resume-queued` refusal), [#1079] (`fix:`), [#912] (`feat:`), and [#1017] (`docs:` for the configuration note).
+- Independently releasable: [#947], [#1048], [#1049], [#1050], [#1012], [#1051], [#1013], [#1079], [#1080], [#912], [#1017].
+- Release vehicles: [#947] (`feat:` or `fix:`, decided at plan time), [#1049] (`fix:` for [#949]), [#1050] (`fix:` for the resume's workspace rule), [#1012] (`fix!:`), [#1051] (`fix:` for a stopped run's late result landing on its resume), [#1013] (`fix!:` for the `resume-queued` refusal), [#1079] (`fix:`), [#1080] (`fix:`), [#912] (`feat:`), and [#1017] (`docs:` for the configuration note).
   [#1048] is `refactor:` only and cuts no release on its own.
 - No batches: every step leaves the package releasable, and the refactoring steps preserve behavior.
 
@@ -1351,5 +1368,6 @@ The upstream test suite is run periodically as a regression canary for the sessi
 [#1050]: https://github.com/gotgenes/pi-packages/issues/1050
 [#1051]: https://github.com/gotgenes/pi-packages/issues/1051
 [#1079]: https://github.com/gotgenes/pi-packages/issues/1079
+[#1080]: https://github.com/gotgenes/pi-packages/issues/1080
 [ADR-0002]: ../decisions/0002-extensions-on-a-minimal-core.md
 [ADR-0004]: ../decisions/0004-reconsider-ui-direction.md
