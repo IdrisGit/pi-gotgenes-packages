@@ -206,6 +206,20 @@ describe("renderOutcomeBody", () => {
 		);
 	});
 
+	it("says a queued agent has not started instead of reporting an outcome", () => {
+		expect(renderOutcomeBody(makeOutcome({ status: "queued", result: undefined }))).toBe(
+			"Agent is queued and has not started; it is waiting for a concurrency slot (maxConcurrent). " +
+				"Use wait: true or check back later.",
+		);
+	});
+
+	it("says a queued agent has not started even when its result is an empty string", () => {
+		expect(renderOutcomeBody(makeOutcome({ status: "queued", result: "" }))).toBe(
+			"Agent is queued and has not started; it is waiting for a concurrency slot (maxConcurrent). " +
+				"Use wait: true or check back later.",
+		);
+	});
+
 	it("reports the error for a failed agent", () => {
 		expect(renderOutcomeBody(makeOutcome({ status: "error", error: "boom" }))).toBe("Error: boom");
 	});

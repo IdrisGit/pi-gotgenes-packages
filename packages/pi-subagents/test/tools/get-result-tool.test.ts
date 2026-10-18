@@ -285,6 +285,22 @@ describe("GetResultTool", () => {
 		expect(text).toContain("All done.");
 	});
 
+	describe("a queued agent", () => {
+		it("says it has not started instead of reporting no output, and leaves its outcome uncollected", async () => {
+			const { record, manager } = queuedAgent();
+
+			const text = textOf(await execute(manager, { agent_id: "agent-1" }));
+
+			expect(text).toContain("Status: queued");
+			expect(text).toContain(
+				"\n\nAgent is queued and has not started; it is waiting for a concurrency slot (maxConcurrent). " +
+					"Use wait: true or check back later.",
+			);
+			expect(text).not.toContain("No output.");
+			expect(record.consumed).toBe(false);
+		});
+	});
+
 	describe("model", () => {
 		it("names the model the agent ran in the report and the TUI details", async () => {
 			const record = createTestSubagent({

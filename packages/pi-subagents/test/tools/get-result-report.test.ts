@@ -71,6 +71,14 @@ describe("renderReportBody", () => {
 		expect(body).toBe("Agent is still running. Use wait: true or check back later.");
 	});
 
+	it("says a queued agent has not started, rather than showing no output", () => {
+		const body = renderReportBody(makeReport({ status: "queued", result: undefined }));
+		expect(body).toBe(
+			"Agent is queued and has not started; it is waiting for a concurrency slot (maxConcurrent). " +
+				"Use wait: true or check back later.",
+		);
+	});
+
 	it("shows the error message for error status", () => {
 		const body = renderReportBody(makeReport({ status: "error", error: "timeout" }));
 		expect(body).toBe("Error: timeout");

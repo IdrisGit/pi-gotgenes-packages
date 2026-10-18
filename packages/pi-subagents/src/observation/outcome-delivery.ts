@@ -236,8 +236,8 @@ export function renderRunUpdates(updates: readonly string[] | undefined): string
 }
 
 /**
- * The outcome body every carrier reports: a running note, an error line, a
- * never-started note, or the trimmed result.
+ * The outcome body every carrier reports: a running note, a queued note, an
+ * error line, a never-started note, or the trimmed result.
  *
  * The empty-result fallback tests truthiness rather than nullishness. A `??`
  * here passed an empty string through, which is exactly what a run whose
@@ -249,6 +249,12 @@ export function renderRunUpdates(updates: readonly string[] | undefined): string
 export function renderOutcomeBody(outcome: OutcomeBody): string {
 	if (outcome.status === "running")
 		return "Agent is still running. Use wait: true or check back later.";
+	// Only a pull can see this status: every other carrier renders a settled run.
+	if (outcome.status === "queued")
+		return (
+			"Agent is queued and has not started; it is waiting for a concurrency slot (maxConcurrent). " +
+			"Use wait: true or check back later."
+		);
 	if (outcome.status === "error") return `Error: ${outcome.error}`;
 	if (outcome.stoppedWhileQueued)
 		return "Agent was stopped while queued and never started. No work was performed.";
