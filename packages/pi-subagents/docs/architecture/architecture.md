@@ -1129,17 +1129,21 @@ A record whose resume is queued refuses another with the new `resume-queued` mem
 
 Release: independent
 
-#### [#1079] A queued agent's report says it has not started
+#### ✅ [#1079] A queued agent's report says it has not started
 
 **Cause:** the shared outcome body has no arm for a run still waiting on a concurrency slot.
 `renderOutcomeBody` (`src/observation/outcome-delivery.ts`) words `running`, `error`, and a queued run that was stopped, so a queued run falls through to the empty-result fallback and `get_subagent_result` reports `No output.` under `Status: queued`.
 
 - **Smell:** Category C (a status the carrier's body does not distinguish from an empty result).
-- **Target:** `src/observation/outcome-delivery.ts` (`renderOutcomeBody`) and its tests.
+- **Target:** `src/observation/outcome-delivery.ts` (`renderOutcomeBody`), `src/tools/get-result-report.ts` (`renderWaitExpired`), and their tests.
 - **Soft dependency:** [#1013] — a background resume at capacity becomes a second way to reach the queued state.
 - **Outcome:** a queued agent's report says it is waiting for a concurrency slot and has not started, and points at `wait: true`; pinned.
 - **Commit type:** `fix:`.
 - **Impact 2 / Risk 1 / Priority 10.**
+
+Landed: `renderOutcomeBody` words a queued run as not started and waiting for a concurrency slot, pointing at `wait: true`, so `get_subagent_result` no longer reports `No output.` for it; only that pull can see the status, since every other carrier renders a settled run.
+A bounded wait that expires on a queued agent now says it is still queued and that waiting again is how to collect it, where the running agent's note (unchanged) says waiting again will not unstick it.
+The report's `Duration` stat is [#1080]'s.
 
 Release: independent
 
@@ -1204,7 +1208,7 @@ flowchart TD
     S1050 --> S1013["✅ #1013<br/>Resume admission"]
     S1051 -.soft.-> S1013
     S1012 -.soft.-> S1013
-    S1013 -.soft.-> S1079["#1079<br/>Queued report body"]
+    S1013 -.soft.-> S1079["✅ #1079<br/>Queued report body"]
     S1079 -.soft.-> S1080["#1080<br/>Queued report duration"]
     S1017["#1017<br/>Drop pre-0.86 arms"]
 ```
