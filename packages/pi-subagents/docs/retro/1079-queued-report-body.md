@@ -24,4 +24,20 @@ The plan is three code steps (a shared `queuedAgent()` test fixture, then two `f
 
 - `src/tools/get-result-report.ts`: `renderReportBody` is a one-line pass-through to `renderOutcomeBody`, kept because `get-result-report.test.ts` calls it directly.
 
+## Stage: Implementation — TDD (2026-10-18T03:46:09Z)
+
+### Session summary
+
+All four plan steps landed: the shared `queuedAgent()` fixture, the queued arm in `renderOutcomeBody`, the status-aware `renderWaitExpired`, and the architecture-doc landing.
+The pi-subagents suite went from 2173 to 2179 tests (+6), and check, root lint, and `fallow dead-code` stayed green.
+
+### Observations
+
+- No deviations from the plan.
+- Every killing mutation produced the reds the plan predicted: deleting the queued body arm turned all 4 Step 2 tests red, disabling the queued wait branch turned both Step 3 tests red, and inverting it also killed the existing running exact-text and `EXPIRY_NOTE` tests, so those really pin the running note byte for byte.
+- The `&& false` mutation tripped `pi-autoformat`'s Biome `noConstantCondition` check; that is harmless for a temporary mutation, but a compared-literal mutation (`!==`) avoids the noise.
+- Pre-completion reviewer: WARN.
+  Its one finding: `architecture.md` line ~962 still describes the queued `No output.` body, but that is the Phase 23 sweep disposition explaining why this issue was filed, i.e. historical context, so it was left as is.
+  The reviewer independently confirmed that only `get_subagent_result` can observe a queued run.
+
 [#1080]: https://github.com/gotgenes/pi-packages/issues/1080
